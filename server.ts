@@ -319,11 +319,35 @@ function parseMetaTag(html: string, nameOrProperty: string): string {
   return "";
 }
 
+// Fetch an external image server-side and convert to base64 data URI (bypasses Facebook CDN CORS)
+async function proxyImageToBase64(imageUrl: string): Promise<string> {
+  if (!imageUrl) return '';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'Referer': 'https://www.facebook.com/',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const buffer = await res.arrayBuffer();
+      const mime = res.headers.get('content-type') || 'image/jpeg';
+      return `data:${mime};base64,${Buffer.from(buffer).toString('base64')}`;
+    }
+  } catch (e) {}
+  return '';
+}
+
 // Generate an elegant SVG mockup card as a sharp, non-blurry, instant preview
 function generateFallbackCard(
   urlStr: string,
   title: string,
-  parsedImage?: string,
+  parsedImageBase64?: string,  // now expects base64 data URI, not external URL
   parsedDesc?: string,
   parsedSiteName?: string
 ): string {
@@ -341,6 +365,7 @@ function generateFallbackCard(
   }
 
   // Adjust wrap widths based on whether there's an image
+  const parsedImage = parsedImageBase64; // use base64 data URI throughout
   const wrapWidth = parsedImage ? 28 : 42;
   const mainTitle = title || parsedSiteName || 'Liên kết bài viết';
   const lines = wrapText(mainTitle, wrapWidth);
@@ -1280,7 +1305,9 @@ app.get("/api/screenshot", async (req, res) => {
 
     // 2. Direct Fallback: Generate beautifully designed HD Social Card (fail-proof & instantaneous)
     console.log(`[Screenshot API] Tạo hình ảnh mô phỏng HD Social Card cho: ${targetUrl}`);
-    const svgContent = generateFallbackCard(targetUrl, postTitle, parsedImage, parsedDesc, parsedSiteName);
+    // Proxy the image server-side to avoid Facebook CDN cross-origin blocks in SVG
+    const parsedImageBase64 = parsedImage ? await proxyImageToBase64(parsedImage) : '';
+    const svgContent = generateFallbackCard(targetUrl, postTitle, parsedImageBase64, parsedDesc, parsedSiteName);
     const base64Svg = Buffer.from(svgContent).toString('base64');
     
     return res.json({
