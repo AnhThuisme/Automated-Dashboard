@@ -796,23 +796,24 @@ app.get("/api/screenshot", async (req, res) => {
       }
 
       const launchOpts: any = {
-        headless: true,
+        headless: 'new' as any,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--hide-scrollbars',
-          '--single-process',
           '--no-zygote',
-          '--disable-features=IsolateOrigins,site-per-process'
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-extensions',
+          '--mute-audio',
+          '--window-size=1280,900'
         ]
       };
       if (chromePath) {
         launchOpts.executablePath = chromePath;
       } else {
         try {
-          const defaultPath = puppeteer.executablePath();
+          const defaultPath = (puppeteer as any).executablePath ? (puppeteer as any).executablePath() : undefined;
           if (typeof defaultPath === 'string' && fs.existsSync(defaultPath)) {
             launchOpts.executablePath = defaultPath;
           }
@@ -949,12 +950,13 @@ app.get("/api/screenshot", async (req, res) => {
       console.warn(`[Screenshot API] Headless Chrome chưa khả dụng (Chuyển sang hàng đợi kế tiếp):`, puppeteerErr.message);
     }
 
-    // 1. Attempt 1: Cloud Screenshot API (Microlink fallback for production environments like Render)
-    // Screenshots the ORIGINAL clean Facebook URL at 1280px desktop resolution for a authentic full post view!
+    // 1. Attempt 1: Cloud Screenshot API (Microlink fallback for cloud environments)
     try {
-      const mlUrl = cleanUrl;
-      const mlWidth = 1280;
-      const mlHeight = 900;
+      const mlWidth = isFacebook ? 750 : 1280;
+      const mlHeight = isFacebook ? 900 : 900;
+      const mlUrl = isFacebook 
+        ? `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(cleanUrl)}&width=${mlWidth}&show_text=true&locale=vi_VN` 
+        : cleanUrl;
       const mlWait = isFacebook ? 6000 : 3500;
 
       const apiUrl = [
@@ -974,7 +976,7 @@ app.get("/api/screenshot", async (req, res) => {
         `&_cb=${Date.now()}`
       ].join('');
 
-      console.log(`[Screenshot API] [Hàng đợi 1 - Microlink] Đang chụp trang gốc (${mlWidth}px): ${mlUrl}`);
+      console.log(`[Screenshot API] [Hàng đợi 1 - Microlink] Đang chụp: ${mlUrl}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -985,7 +987,7 @@ app.get("/api/screenshot", async (req, res) => {
         const buffer = await response.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
         const mimeType = response.headers.get("content-type") || "image/png";
-        console.log(`[Screenshot API] [Hàng đợi 1] Chụp thành công trang gốc bằng Microlink!`);
+        console.log(`[Screenshot API] [Hàng đợi 1] Chụp thành công bằng Microlink!`);
         return res.json({ 
           success: true, 
           screenshotUrl: `data:${mimeType};base64,${base64}` 
