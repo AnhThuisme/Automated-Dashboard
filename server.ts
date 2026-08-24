@@ -770,9 +770,22 @@ app.get("/api/screenshot", async (req, res) => {
 
       try {
         const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        await page.setExtraHTTPHeaders({ 'accept-language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7' });
+        await page.evaluateOnNewDocument(() => {
+          Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        });
+
         await page.setViewport({ width: 650, height: 1000, deviceScaleFactor: 2 });
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-        await new Promise(r => setTimeout(r, 1500));
+        
+        try {
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          await new Promise(r => setTimeout(r, 2000));
+        } catch (gotoErr) {
+          console.warn(`[Screenshot API] Không thể mở targetUrl, thử chuyển sang originalUrl: ${originalUrl}`);
+          await page.goto(originalUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          await new Promise(r => setTimeout(r, 2000));
+        }
 
         // Ensure caption text is 100% visible, expanded, and styled crisply inside Chrome
         await page.evaluate(() => {
