@@ -949,330 +949,13 @@ app.get("/api/screenshot", async (req, res) => {
       console.warn(`[Screenshot API] Headless Chrome chưa khả dụng (Chuyển sang hàng đợi kế tiếp):`, puppeteerErr.message);
     }
 
-
-    // 1. Attempt 1: Microlink API – screenshot the ORIGINAL post URL (not embed) so we get the real post layout
-      
-      // Extremely precise selector list targeting actual login overlays/modals to hide.
-      // We exclude 'div[role="dialog"]' and '[data-testid*="dialog"]' here because Facebook's main post modal uses them.
-      // We will instead identify and hide login-specific dialogs dynamically in the client-side runScript.
-      let hideSelector = "";
-      let customStyles = "";
-      let runScript = "";
-
-      if (isFacebook) {
-        // Facebook Embed handles its own UI perfectly. Keeping variables extremely lightweight to avoid HTTP 414 (URI Too Long) on Microlink API.
-        hideSelector = "#login_popup,form[action*='login'],[data-testid*='cookie']";
-        
-        customStyles = `
-          .plugin, body.plugin, html.plugin, #facebook, ._5p3y { background: #ffffff !important; }
-          body.plugin, html.plugin, #facebook, ._5p3y { width: ${embedWidth}px !important; max-width: ${embedWidth}px !important; height: auto !important; overflow: visible !important; display: block !important; margin: 0 auto !important; }
-          img[class*="blur"], img[src*="blur"], div[class*="blurBackground"], div[style*="filter: blur"] { display: none !important; }
-          
-          /* Enforce 100% uniform post structure across all post types (photos, videos, reels): Header (1) -> Caption (2) -> Media (3) -> Footer (4) */
-          ._5p3y, ._1dwg, ._5pcb, form, div[role="article"] { display: flex !important; flex-direction: column !important; }
-          ._5x46, header, div[class*="header"], div[class*="author"] { order: 1 !important; }
-          ._5p1e, ._5ptz, ._1p1t, div[data-testid="post_message"], div[class*="userContent"], div[class*="caption"] { order: 2 !important; }
-          ._5cwb, ._1t4w, ._5qgq, div[class*="media"], div[class*="stage"], div[class*="video"], div[class*="photo"], div[class*="image"] { order: 3 !important; }
-          ._3xom, ._4bl9, footer, div[class*="footer"], div[class*="feedback"], div[class*="action"] { order: 4 !important; }
-        `.replace(/\s+/g, ' ').trim();
-
-        runScript = `
-          try {
-            const captionEl = document.querySelector('._5p1e, ._5ptz, ._1p1t, div[data-testid="post_message"], div[class*="userContent"], div[class*="caption"]');
-            const mediaEl = document.querySelector('._5cwb, ._1t4w, ._5qgq, div[class*="media"], div[class*="stage"], div[class*="video"], div[class*="photo"], div[class*="image"]');
-            if (captionEl && mediaEl && mediaEl.parentNode) {
-              mediaEl.parentNode.insertBefore(captionEl, mediaEl);
-            }
-          } catch(e){}
-          try {
-            const clickExpanders = () => {
-              document.querySelectorAll('span, div, a, button').forEach(el => {
-                const t = (el.textContent || "").trim().toLowerCase();
-                if ((t === 'xem thêm' || t === 'see more') && !el.querySelector('span, div')) {
-                  el.click();
-                }
-              });
-            };
-            clickExpanders();
-            setTimeout(clickExpanders, 1500);
-            setTimeout(clickExpanders, 3000);
-          } catch(e){}
-        `.replace(/\s+/g, ' ').trim();
-      } else {
-        const hideSelectorList = [
-          "#login_popup",
-          "#login_popup_layer",
-          ".signup_box",
-          ".signup_bar",
-          "form[action*='login']",
-          "[data-testid*='cookie']",
-          "div[role='dialog']:has(input[type='password'])",
-          "div[role='dialog']:has(form[action*='login'])",
-          "div[role='dialog']:has(a[href*='login'])",
-          "div[role='dialog']:has(input[name='pass'])",
-          "div[role='dialog']:has(input[name='email'])",
-          "div[class*='dialog']:has(input[type='password'])",
-          "div[class*='login']:has(input[type='password'])",
-          "div[id*='login']:has(input[type='password'])",
-          "div[style*='position: fixed']:has(input[type='password'])",
-          "div[style*='position: absolute']:has(input[type='password'])",
-          "div[class*='backdrop']:has(input[type='password'])",
-          "div[class*='overlay']:has(input[type='password'])",
-          "div[class*='Overlay']:has(input[type='password'])",
-          "div:has(> div[role='dialog']:has(input[type='password']))",
-          "div:has(> div[role='dialog']:has(form[action*='login']))",
-          "div:has(> form[action*='login'])",
-          "div:has(input[name='email']):has(input[name='pass'])",
-          "div:has(input[placeholder*='phone']):has(input[placeholder*='Password'])",
-          "div:has(input[placeholder*='thoại']):has(input[placeholder*='khẩu'])",
-          "div:has(button[name='login'])",
-          "div[role='dialog']:has(button[name='login'])",
-          "div[role='dialog']:has([data-testid*='login'])",
-          "div:has(> div:has(input[name='email']):has(input[name='pass']))"
-        ];
-        hideSelector = hideSelectorList.join(",");
-
-        customStyles = `
-          header, [role="banner"], #login_popup, #login_popup_layer, .signup_box, .signup_bar, form[action*='login'], [data-testid*='cookie'] {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-          }
-          div[role="dialog"]:has(input[type="password"]),
-          div[role="dialog"]:has(form[action*="login"]),
-          div[role="dialog"]:has(a[href*="login"]),
-          div[class*="login"]:has(input[type="password"]),
-          div[id*="login"]:has(input[type="password"]),
-          div[class*="dialog"]:has(input[type="password"]),
-          div[role="dialog"]:not(:has([role="article"])):not(:has([data-testid="post_message"])):not(:has(video)):not(:has([class*="reel"])):not(:has([class*="Reel"])) {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
-          }
-          div:has(> div[role="dialog"]:has(input[type="password"])),
-          div:has(> div[role="dialog"]:has(form[action*="login"])),
-          div:has(> div[role="dialog"]:not(:has([role="article"])):not(:has(video))) {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
-          }
-          div[style*="position: fixed"]:not(:has([role="article"])):not(:has([data-testid="post_message"])):not(:has(video)),
-          div[class*="backdrop"]:not(:has([role="article"])):not(:has(video)),
-          div[class*="Overlay"]:not(:has([role="article"])):not(:has(video)),
-          div[class*="overlay"]:not(:has([role="article"])):not(:has(video)) {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
-          }
-          html,body,#mount_0_0_,[role='main']{overflow:hidden!important;overflow-y:hidden!important;position:static!important;filter:none!important;opacity:1!important;image-rendering:-webkit-optimize-contrast!important;image-rendering:crisp-edges!important;}
-          [data-testid*="Feedback"],[class*="feedback"],[class*="reaction"],[aria-label*="reaction"],[aria-label*="like"],[aria-label*="thích"],[aria-label*="bình luận"],[aria-label*="chia sẻ"],[role="toolbar"]{opacity:1!important;visibility:visible!important;display:flex!important;}
-          .plugin, body.plugin, html.plugin, #facebook, ._5p3y, ._1ooc, ._539f, div[class*="Player"] {
-            background-color: #ffffff !important;
-            background: #ffffff !important;
-          }
-          body.plugin, html.plugin, #facebook, ._5p3y {
-            width: ${embedWidth}px !important;
-            max-width: ${embedWidth}px !important;
-            height: auto !important;
-            min-height: unset !important;
-            max-height: none !important;
-            overflow: hidden !important;
-            display: block !important;
-            margin: 0 auto !important;
-          }
-          body.plugin, html.plugin {
-            zoom: 1.05 !important;
-            -webkit-zoom: 1.05 !important;
-            image-rendering: -webkit-optimize-contrast !important;
-            image-rendering: crisp-edges !important;
-          }
-          img[class*="blur"], img[src*="blur"], div[class*="blurBackground"], div[class*="blur-background"], div[style*="filter: blur"], div[style*="filter:blur"] {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
-          }
-        `.replace(/\s+/g, ' ').trim();
-
-        runScript = `
-          try {
-            const clickExpanders = () => {
-              const expanders = [];
-              document.querySelectorAll('span, div, a, button, [role="button"]').forEach(el => {
-                try {
-                  const text = (el.textContent || "").trim().toLowerCase();
-                  const isExpander = 
-                    text === 'xem thêm' || 
-                    text === 'see more' || 
-                    text === 'đọc thêm' || 
-                    text === 'read more' ||
-                    text === 'xem tất cả bình luận' ||
-                    text === 'view all comments' ||
-                    text === 'xem thêm bình luận' ||
-                    text === 'view more comments' ||
-                    text === 'xem phản hồi' ||
-                    text === 'view replies' ||
-                    text === 'xem thêm câu trả lời' ||
-                    text === 'view more replies' ||
-                    (text.includes('xem thêm') && !text.includes('facebook') && text.length < 25) ||
-                    (text.includes('see more') && !text.includes('facebook') && text.length < 25) ||
-                    (text.includes('bình luận') && text.includes('xem') && text.length < 35) ||
-                    (text.includes('comments') && text.includes('view') && text.length < 35);
-                    
-                  if (isExpander && !el.querySelector('span, div, a, button')) {
-                    expanders.push(el);
-                  }
-                } catch(e){}
-              });
-
-              expanders.forEach(el => {
-                try {
-                  el.click();
-                  el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                } catch(e){}
-              });
-            };
-
-            const clean = () => {
-              const isFbEmbed = window.location.href.includes('facebook.com/plugins') || window.location.href.includes('plugins/post.php') || window.location.href.includes('plugins/video.php');
-              
-              if (isFbEmbed) {
-                // Enforce 100% uniform structure: Move Caption BEFORE Media Image for all post types
-                try {
-                  const captionEl = document.querySelector('._5p1e, ._5ptz, ._1p1t, div[data-testid="post_message"], div[class*="userContent"], div[class*="caption"]');
-                  const mediaEl = document.querySelector('._5cwb, ._1t4w, ._5qgq, div[class*="media"], div[class*="stage"], div[class*="video"], div[class*="photo"], div[class*="image"]');
-                  if (captionEl && mediaEl && mediaEl.parentNode) {
-                    mediaEl.parentNode.insertBefore(captionEl, mediaEl);
-                  }
-                } catch(e){}
-
-                ['#login_popup', '#login_popup_layer', '.signup_box', '.signup_bar', 'form[action*="login"]', '[data-testid*="cookie"]'].forEach(s => {
-                  document.querySelectorAll(s).forEach(e => {
-                    try {
-                      e.style.setProperty('display', 'none', 'important');
-                      e.style.setProperty('opacity', '0', 'important');
-                      e.style.setProperty('visibility', 'hidden', 'important');
-                    } catch(err){}
-                  });
-                });
-                clickExpanders();
-                return;
-              }
-
-              const hideElements = ['header', '[role="banner"]', '#login_popup', '#login_popup_layer', '.signup_box', '.signup_bar', 'form[action*="login"]', '[data-testid*="cookie"]', 'div[class*="dialog"]', 'div[id*="login"]', 'div[class*="login"]', 'div[role="dialog"]'];
-              hideElements.forEach(s => {
-                document.querySelectorAll(s).forEach(e => {
-                  try {
-                    if (e !== document.body && e !== document.documentElement && !e.querySelector('[role="article"]') && !e.querySelector('video')) {
-                      e.style.setProperty('display', 'none', 'important');
-                      e.style.setProperty('opacity', '0', 'important');
-                      e.style.setProperty('visibility', 'hidden', 'important');
-                    }
-                  } catch(err){}
-                });
-              });
-
-              const terms = ["login", "signup", "register", "cookie", "đăng nhập", "đăng ký", "tạo tài khoản", "mở ứng dụng", "xem thêm trên facebook", "see more on facebook", "join facebook", "tham gia facebook", "create new account"];
-              document.querySelectorAll('div, form, section, dialog, [role="dialog"]').forEach(el => {
-                try {
-                  if (el === document.body || el === document.documentElement) return;
-                  const t = (el.textContent || "").toLowerCase();
-                  const isFacebookLoginPrompt = t.includes("see more on facebook") || t.includes("xem thêm trên facebook") || t.includes("đăng nhập để xem") || t.includes("đăng nhập để tiếp tục") || t.includes("đăng nhập để xem tiếp") || t.includes("đăng nhập hoặc đăng ký") || t.includes("create new account") || t.includes("tạo tài khoản mới") || t.includes("bạn phải đăng nhập");
-                  const hasPasswordInput = el.querySelector('input[type="password"]');
-                  
-                  if (isFacebookLoginPrompt || hasPasswordInput) {
-                    const isActualPost = el.querySelector('[role="article"]') || el.querySelector('[data-testid="post_message"]') || el.querySelector('video');
-                    if (!isActualPost) {
-                      el.style.setProperty('display', 'none', 'important');
-                      el.style.setProperty('opacity', '0', 'important');
-                      el.style.setProperty('visibility', 'hidden', 'important');
-                      
-                      let parent = el;
-                      while (parent && parent.parentElement && parent.parentElement !== document.body) {
-                        parent = parent.parentElement;
-                      }
-                      if (parent && parent !== document.body && !parent.querySelector('[role="article"]') && !parent.querySelector('video')) {
-                        parent.style.setProperty('display', 'none', 'important');
-                        parent.style.setProperty('opacity', '0', 'important');
-                        parent.style.setProperty('visibility', 'hidden', 'important');
-                      }
-                    }
-                  }
-                } catch(e){}
-              });
-
-              document.querySelectorAll('div, section, dialog').forEach(el => {
-                try {
-                  if (el === document.body || el === document.documentElement) return;
-                  const t = (el.textContent || "").toLowerCase();
-                  const isLoginDialog = t.includes("see more on facebook") || t.includes("xem thêm trên facebook") || t.includes("đăng nhập") || el.querySelector('input[type="password"]');
-                  if (isLoginDialog) {
-                    el.querySelectorAll('[role="button"], button, [aria-label*="Close"], [aria-label*="Đóng"], [aria-label*="close"], [aria-label*="đóng"], [class*="close"], [id*="close"]').forEach(btn => {
-                      btn.click();
-                      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                    });
-                  }
-                } catch(e){}
-              });
-
-              try {
-                const dismissSelectors = [
-                  '[aria-label="Close"]', '[aria-label="Đóng"]', '[aria-label="Dismiss"]', '[aria-label="Ẩn"]',
-                  '[aria-label="Close dialog"]', '[aria-label="Đóng hộp thoại"]',
-                  'div[role="button"][aria-label*="Close"]', 'div[role="button"][aria-label*="Đóng"]'
-                ];
-                dismissSelectors.forEach(selector => {
-                  document.querySelectorAll(selector).forEach(btn => {
-                    try {
-                      btn.click();
-                    } catch(e){}
-                  });
-                });
-              } catch(e){}
-            };
-
-            clean();
-            clickExpanders();
-            setTimeout(clean, 1500);
-            setTimeout(clickExpanders, 2000);
-          } catch(e){}
-        `.replace(/\s+/g, ' ').trim();
-      }
-
-      const isEmbed = targetUrl.includes('facebook.com/plugins/') || targetUrl.includes('plugins/post.php') || targetUrl.includes('plugins/video.php') || targetUrl.includes('/fb-embed');
-      let vpWidth = 650;
-      let vpHeight = 750;
-      let fullPage = false;
-
-      if (isEmbed) {
-        fullPage = false;
-        const isReel = /reel|reels|share\/r\//i.test(originalUrl);
-        const isWatchOrVideo = /watch|fb\.watch|video/i.test(originalUrl);
-        
-        if (isReel) {
-          vpWidth = 650;
-          vpHeight = 1250;
-        } else if (isWatchOrVideo) {
-          vpWidth = 650;
-          vpHeight = 800;
-        } else {
-          vpWidth = 650;
-          vpHeight = 720;
-        }
-      }
-
-    // 1. Attempt 1: Microlink API – screenshot the ORIGINAL post URL (not embed) so we get the real post layout
+    // 1. Attempt 1: Cloud Screenshot API (Microlink fallback for production environments like Render)
+    // Screenshots the ORIGINAL clean Facebook URL at 1280px desktop resolution for a authentic full post view!
     try {
-      // For Facebook, screenshot the embed URL which shows only the clean post widget (no login wall)
-      // Use large viewport so full post content (image + caption) fits without cropping
-      const mlUrl = isFacebook ? targetUrl : originalUrl;
-      const isReel = /reel|reels|share\/r\//i.test(originalUrl);
-      const mlWidth  = isFacebook ? 650  : 1200;
-      const mlHeight = isReel      ? 1200 : isFacebook ? 800 : 900;
-      const mlWait   = isFacebook  ? 6000 : 3500;
+      const mlUrl = cleanUrl;
+      const mlWidth = 1280;
+      const mlHeight = 900;
+      const mlWait = isFacebook ? 6000 : 3500;
 
       const apiUrl = [
         `https://api.microlink.io`,
@@ -1284,14 +967,14 @@ app.get("/api/screenshot", async (req, res) => {
         `&embed=screenshot.url`,
         `&viewport.width=${mlWidth}`,
         `&viewport.height=${mlHeight}`,
-        `&viewport.deviceScaleFactor=2`,
+        `&viewport.deviceScaleFactor=1.5`,
         `&wait=${mlWait}`,
         `&force=true`,
         `&ttl=0`,
         `&_cb=${Date.now()}`
       ].join('');
 
-      console.log(`[Screenshot API] [Hàng đợi 1 - Microlink] Đang chụp: ${mlUrl}`);
+      console.log(`[Screenshot API] [Hàng đợi 1 - Microlink] Đang chụp trang gốc (${mlWidth}px): ${mlUrl}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -1302,7 +985,7 @@ app.get("/api/screenshot", async (req, res) => {
         const buffer = await response.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
         const mimeType = response.headers.get("content-type") || "image/png";
-        console.log(`[Screenshot API] [Hàng đợi 1] Chụp thành công bằng Microlink!`);
+        console.log(`[Screenshot API] [Hàng đợi 1] Chụp thành công trang gốc bằng Microlink!`);
         return res.json({ 
           success: true, 
           screenshotUrl: `data:${mimeType};base64,${base64}` 
