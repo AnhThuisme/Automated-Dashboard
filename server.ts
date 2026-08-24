@@ -764,15 +764,14 @@ app.get("/api/screenshot", async (req, res) => {
       console.warn(`[Screenshot API] Bỏ qua lỗi tải meta (sử dụng fallback mặc định):`, err.message);
     }
 
-    // Normalize mobile Facebook URLs to standard WWW to ensure compatibility with Facebook embed plugins
-    let targetUrl = originalUrl.replace(/\/\/(m|mobile|touch|da|developers)\.facebook\.com/i, '//www.facebook.com');
+    // Normalize mobile Facebook URLs to standard WWW
+    const cleanUrl = originalUrl.replace(/\/\/(m|mobile|touch|da|developers)\.facebook\.com/i, '//www.facebook.com');
 
-    // Automatically convert Facebook URLs into official, fully public embedded widgets.
-    const isFacebook = /facebook\.com|fb\.watch|fb\.com/i.test(targetUrl);
-    let embedWidth = 600; // 600px width for standard fb-post cards
-    if (isFacebook && !targetUrl.includes('plugins/post.php') && !targetUrl.includes('plugins/video.php')) {
-      targetUrl = `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(targetUrl)}&width=${embedWidth}&show_text=true&locale=vi_VN`;
-    }
+    const isFacebook = /facebook\.com|fb\.watch|fb\.com/i.test(cleanUrl);
+    const embedWidth = 600;
+
+    // Puppeteer screenshots the ORIGINAL URL (full real Facebook page view)
+    let targetUrl = cleanUrl;
 
     // 0. Attempt 0: Real Headless Chrome Browser (Puppeteer/Selenium Engine)
     try {
@@ -825,19 +824,21 @@ app.get("/api/screenshot", async (req, res) => {
 
       try {
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
         await page.setExtraHTTPHeaders({ 'accept-language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7' });
         await page.evaluateOnNewDocument(() => {
           Object.defineProperty(navigator, 'webdriver', { get: () => false });
+          (window as any).chrome = { runtime: {} };
         });
 
-        await page.setViewport({ width: 650, height: 1000, deviceScaleFactor: 2 });
+        // 1280px wide viewport matches real desktop Facebook layout as requested by the user
+        await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1.5 });
         
         try {
-          await page.goto(targetUrl, { waitUntil: 'load', timeout: 25000 });
+          await page.goto(cleanUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         } catch (gotoErr) {
-          console.warn(`[Screenshot API] Không thể mở targetUrl, thử chuyển sang originalUrl: ${originalUrl}`);
-          await page.goto(originalUrl, { waitUntil: 'load', timeout: 25000 });
+          console.warn(`[Screenshot API] domcontentloaded fallback cho: ${cleanUrl}`);
+          await page.goto(cleanUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
         }
 
         // Real-Human Automated Selenium Chrome Workflow:
@@ -924,23 +925,17 @@ app.get("/api/screenshot", async (req, res) => {
         // 3. Generous render wait to guarantee all post photos and video thumbnails finish loading
         await new Promise(r => setTimeout(r, 4500));
 
-        // Find the full Facebook embed card element (#facebook / ._5p3y / body) to capture Caption + Header + Video + Metrics
-        const element = await page.$('#facebook') || await page.$('._5p3y') || await page.$('body');
-        let base64Image = '';
+        // 3. Wait for media and text to render completely
+        await new Promise(r => setTimeout(r, 4000));
 
-        if (element) {
-          // Take screenshot OF THE ELEMENT BOUNDING BOX ONLY (0% trailing white space!)
-          const buffer = await element.screenshot({ type: 'png', omitBackground: true });
-          base64Image = Buffer.from(buffer).toString('base64');
-        } else {
-          const buffer = await page.screenshot({ type: 'png', fullPage: false });
-          base64Image = Buffer.from(buffer).toString('base64');
-        }
+        // Take a screenshot of the actual desktop Facebook post page
+        const buffer = await page.screenshot({ type: 'png', fullPage: false });
+        const base64Image = Buffer.from(buffer).toString('base64');
 
         await browser.close();
 
         if (base64Image) {
-          console.log(`[Screenshot API] [Hàng đợi 0] Chụp thành công 100% ôm sát khung bằng Headless Chrome (Selenium)!`);
+          console.log(`[Screenshot API] [Hàng đợi 0] Chụp thành công 100% trang Facebook thực!`);
           return res.json({
             success: true,
             screenshotUrl: `data:image/png;base64,${base64Image}`
