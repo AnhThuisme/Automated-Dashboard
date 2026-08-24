@@ -954,9 +954,8 @@ app.get("/api/screenshot", async (req, res) => {
       console.warn(`[Screenshot API] Headless Chrome chưa khả dụng (Chuyển sang hàng đợi kế tiếp):`, puppeteerErr.message);
     }
 
-    // 1. Attempt 1: Microlink API screenshot with a clean abort controller timeout
-    try {
-      console.log(`[Screenshot API] [Hàng đợi 1] Đang thử chụp bằng Microlink cho: ${targetUrl}`);
+
+    // 1. Attempt 1: Microlink API – screenshot the ORIGINAL post URL (not embed) so we get the real post layout
       
       // Extremely precise selector list targeting actual login overlays/modals to hide.
       // We exclude 'div[role="dialog"]' and '[data-testid*="dialog"]' here because Facebook's main post modal uses them.
@@ -1270,19 +1269,36 @@ app.get("/api/screenshot", async (req, res) => {
         }
       }
 
-      // Request a high-resolution viewport area with fullPage enabled to capture the entire content cleanly.
-      // We set deviceScaleFactor=2 (Retina @2x resolution quality) which is extremely stable, fast, and
-      // guarantees incredibly sharp, high-resolution and crystal-clear text without crashing the crawler.
-      // We also omit Pro-only premium parameters like 'script' and 'styles' to ensure 100% success rate on the free tier.
-      const waitTime = isFacebook ? 8000 : 4000;
-      let apiUrl = `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}&screenshot=true&screenshot.type=png&screenshot.quality=100&screenshot.fullPage=${fullPage}&embed=screenshot.url&viewport.width=${vpWidth}&viewport.height=${vpHeight}&viewport.deviceScaleFactor=2&wait=${waitTime}&force=true&ttl=0&_cb=${Date.now()}`;
-      
-      if (!isFacebook && hideSelector) {
-        apiUrl += `&hide=${encodeURIComponent(hideSelector)}`;
-      }
-      
+    // 1. Attempt 1: Microlink API – screenshot the ORIGINAL post URL (not embed) so we get the real post layout
+    try {
+      // For Facebook, screenshot the embed URL which shows only the clean post widget (no login wall)
+      // Use large viewport so full post content (image + caption) fits without cropping
+      const mlUrl = isFacebook ? targetUrl : originalUrl;
+      const isReel = /reel|reels|share\/r\//i.test(originalUrl);
+      const mlWidth  = isFacebook ? 650  : 1200;
+      const mlHeight = isReel      ? 1200 : isFacebook ? 800 : 900;
+      const mlWait   = isFacebook  ? 6000 : 3500;
+
+      const apiUrl = [
+        `https://api.microlink.io`,
+        `?url=${encodeURIComponent(mlUrl)}`,
+        `&screenshot=true`,
+        `&screenshot.type=png`,
+        `&screenshot.quality=100`,
+        `&screenshot.fullPage=false`,
+        `&embed=screenshot.url`,
+        `&viewport.width=${mlWidth}`,
+        `&viewport.height=${mlHeight}`,
+        `&viewport.deviceScaleFactor=2`,
+        `&wait=${mlWait}`,
+        `&force=true`,
+        `&ttl=0`,
+        `&_cb=${Date.now()}`
+      ].join('');
+
+      console.log(`[Screenshot API] [Hàng đợi 1 - Microlink] Đang chụp: ${mlUrl}`);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 seconds timeout for microlink
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch(apiUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
@@ -1297,10 +1313,11 @@ app.get("/api/screenshot", async (req, res) => {
           screenshotUrl: `data:${mimeType};base64,${base64}` 
         });
       } else {
-        console.warn(`[Screenshot API] Microlink phản hồi lỗi: ${response.status}`);
+        const errText = await response.text().catch(() => '');
+        console.warn(`[Screenshot API] Microlink phản hồi lỗi: ${response.status} – ${errText.slice(0, 200)}`);
       }
     } catch (microlinkErr: any) {
-      console.warn(`[Screenshot API] Microlink phản hồi lỗi, chuyển trực tiếp sang khởi tạo Thẻ HD Card:`, microlinkErr.message);
+      console.warn(`[Screenshot API] Microlink thất bại:`, microlinkErr.message);
     }
 
     // 2. Direct Fallback: Generate beautifully designed HD Social Card (fail-proof & instantaneous)
