@@ -779,18 +779,35 @@ app.get("/api/screenshot", async (req, res) => {
         await page.setViewport({ width: 650, height: 1000, deviceScaleFactor: 2 });
         
         try {
-          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-          await new Promise(r => setTimeout(r, 2000));
+          await page.goto(targetUrl, { waitUntil: 'load', timeout: 25000 });
         } catch (gotoErr) {
           console.warn(`[Screenshot API] Không thể mở targetUrl, thử chuyển sang originalUrl: ${originalUrl}`);
-          await page.goto(originalUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-          await new Promise(r => setTimeout(r, 2000));
+          await page.goto(originalUrl, { waitUntil: 'load', timeout: 25000 });
         }
 
-        // Ensure caption text is 100% visible, expanded, and styled crisply inside Chrome
-        await page.evaluate(() => {
+        // Force trigger and wait for all Facebook lazy-loaded post photos & video thumbnails
+        await page.evaluate(async () => {
           try {
-            // Inject CSS overrides directly into DOM
+            // Scroll down and up to trigger viewport intersection observers
+            window.scrollTo(0, 400);
+            await new Promise(r => setTimeout(r, 400));
+            window.scrollTo(0, 0);
+
+            // Force load all lazy images inside Facebook embed card
+            const imgs = Array.from(document.querySelectorAll('img'));
+            imgs.forEach((img: any) => {
+              const lazySrc = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-srcset') || img.getAttribute('data-[#src]');
+              if (lazySrc && (!img.src || img.src.includes('data:image') || img.naturalWidth === 0)) {
+                img.src = lazySrc.split(' ')[0];
+              }
+              img.removeAttribute('loading');
+              img.style.opacity = '1';
+              img.style.visibility = 'visible';
+            });
+          } catch(e){}
+
+          // Ensure caption text is 100% visible, expanded, and styled crisply inside Chrome
+          try {
             const style = document.createElement('style');
             style.textContent = `
               ._5p1e, ._5ptz, ._1p1t, [data-testid="post_message"], [class*="userContent"], [class*="caption"] {
@@ -807,6 +824,10 @@ app.get("/api/screenshot", async (req, res) => {
               body, html, #facebook, ._5p3y {
                 overflow: visible !important;
                 height: auto !important;
+              }
+              img {
+                opacity: 1 !important;
+                visibility: visible !important;
               }
             `;
             document.head.appendChild(style);
@@ -827,6 +848,9 @@ app.get("/api/screenshot", async (req, res) => {
             });
           } catch(e){}
         });
+
+        // Generous 4.5 seconds render wait to guarantee all post photos and video thumbnails finish loading
+        await new Promise(r => setTimeout(r, 4500));
 
         // Find the full Facebook embed card element (#facebook / ._5p3y / body) to capture Caption + Header + Video + Metrics
         const element = await page.$('#facebook') || await page.$('._5p3y') || await page.$('body');
