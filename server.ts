@@ -700,7 +700,7 @@ app.get("/api/screenshot", async (req, res) => {
 
       const response = await fetch(originalUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+          "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
           "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
         },
@@ -718,7 +718,7 @@ app.get("/api/screenshot", async (req, res) => {
         }
         
         parsedDesc = parseMetaTag(html, 'og:description') || parseMetaTag(html, 'description');
-        parsedImage = parseMetaTag(html, 'og:image') || parseMetaTag(html, 'image');
+        parsedImage = parseMetaTag(html, 'og:image') || parseMetaTag(html, 'image') || parseMetaTag(html, 'twitter:image');
         parsedSiteName = parseMetaTag(html, 'og:site_name');
 
         console.log(`[Screenshot API] Tải thẻ meta thành công cho ${originalUrl}`);
@@ -735,14 +735,10 @@ app.get("/api/screenshot", async (req, res) => {
     let targetUrl = originalUrl.replace(/\/\/(m|mobile|touch|da|developers)\.facebook\.com/i, '//www.facebook.com');
 
     // Automatically convert Facebook URLs into official, fully public embedded widgets.
-    // This completely bypasses the login wall, see more modal, and cookie popups because Facebook's embeds are designed to be public.
     const isFacebook = /facebook\.com|fb\.watch|fb\.com/i.test(targetUrl);
-    let embedWidth = 600; // 600px width for standard beautifully balanced fb-post cards
+    let embedWidth = 600; // 600px width for standard fb-post cards
     if (isFacebook && !targetUrl.includes('plugins/post.php') && !targetUrl.includes('plugins/video.php')) {
-      // Use plugins/post.php with show_text=true for ALL Facebook URLs (posts, reels, videos, photos).
-      // plugins/post.php guarantees rendering of full Page Avatar & Header, complete Caption text with hashtags, and Like/Comment/Share metrics!
       targetUrl = `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(targetUrl)}&width=${embedWidth}&show_text=true&locale=vi_VN`;
-      console.log(`[Screenshot API] Sử dụng plugins/post.php cho đầy đủ Caption + Tương tác (Like/CMT/Share): ${targetUrl}`);
     }
 
     // 0. Attempt 0: Real Headless Chrome Browser (Puppeteer/Selenium Engine)
@@ -752,9 +748,19 @@ app.get("/api/screenshot", async (req, res) => {
       
       const fs = await import('fs');
       let chromePath: string | undefined = undefined;
-      const macChrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-      if (fs.existsSync(macChrome)) {
-        chromePath = macChrome;
+      const possibleChromePaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/snap/bin/chromium'
+      ];
+      for (const p of possibleChromePaths) {
+        if (fs.existsSync(p)) {
+          chromePath = p;
+          break;
+        }
       }
 
       const launchOpts: any = {
