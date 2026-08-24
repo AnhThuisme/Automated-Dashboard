@@ -721,6 +721,14 @@ app.get("/api/screenshot", async (req, res) => {
         parsedImage = parseMetaTag(html, 'og:image') || parseMetaTag(html, 'image') || parseMetaTag(html, 'twitter:image');
         parsedSiteName = parseMetaTag(html, 'og:site_name');
 
+        // Extract direct Facebook CDN image URL if og:image wasn't captured in standard meta tags
+        if (!parsedImage || parsedImage.includes('static.xx.fbcdn')) {
+          const scontentMatch = html.match(/https:\/\/(scontent|fbcdn\.net)[^"'\s\\]+/i);
+          if (scontentMatch) {
+            parsedImage = scontentMatch[0].replace(/\\/g, '');
+          }
+        }
+
         console.log(`[Screenshot API] Tải thẻ meta thành công cho ${originalUrl}`);
         console.log(` - Tiêu đề: "${parsedTitle}"`);
         console.log(` - Hình ảnh: "${parsedImage}"`);
@@ -765,10 +773,26 @@ app.get("/api/screenshot", async (req, res) => {
 
       const launchOpts: any = {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--hide-scrollbars']
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--hide-scrollbars',
+          '--single-process',
+          '--no-zygote',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ]
       };
       if (chromePath) {
         launchOpts.executablePath = chromePath;
+      } else {
+        try {
+          const defaultPath = puppeteer.executablePath();
+          if (typeof defaultPath === 'string' && fs.existsSync(defaultPath)) {
+            launchOpts.executablePath = defaultPath;
+          }
+        } catch(e){}
       }
 
       console.log(`[Screenshot API] [Hàng đợi 0 - Headless Chrome] Đang mở Chrome (${chromePath || 'Puppeteer default'}) chụp: ${targetUrl}`);
