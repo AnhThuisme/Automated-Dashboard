@@ -785,15 +785,18 @@ app.get("/api/screenshot", async (req, res) => {
           await page.goto(originalUrl, { waitUntil: 'load', timeout: 25000 });
         }
 
-        // Force trigger and wait for all Facebook lazy-loaded post photos & video thumbnails
+        // Real-Human Automated Selenium Chrome Workflow:
+        // 1. Smooth human-like scrolling to trigger viewport observers & lazy-loaded media
         await page.evaluate(async () => {
           try {
-            // Scroll down and up to trigger viewport intersection observers
-            window.scrollTo(0, 400);
-            await new Promise(r => setTimeout(r, 400));
+            for (let y = 0; y <= 450; y += 45) {
+              window.scrollTo(0, y);
+              await new Promise(r => setTimeout(r, 40));
+            }
+            await new Promise(r => setTimeout(r, 200));
             window.scrollTo(0, 0);
 
-            // Force load all lazy images inside Facebook embed card
+            // Force load all lazy images inside container
             const imgs = Array.from(document.querySelectorAll('img'));
             imgs.forEach((img: any) => {
               const lazySrc = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-srcset') || img.getAttribute('data-[#src]');
@@ -806,8 +809,22 @@ app.get("/api/screenshot", async (req, res) => {
             });
           } catch(e){}
 
-          // Ensure caption text is 100% visible, expanded, and styled crisply inside Chrome
+          // 2. Human-like automated clicks: Accept cookies, close popups, and expand 'Xem thêm' / 'See more'
           try {
+            const dismissSelectors = [
+              '[aria-label="Decline optional cookies"]',
+              '[aria-label="Allow all cookies"]',
+              '[aria-label="Accept all"]',
+              '[aria-label="Chấp nhận tất cả"]',
+              '[data-cookiebanner="accept_button"]',
+              '#cookie-use-link'
+            ];
+            dismissSelectors.forEach(sel => {
+              const btn = document.querySelector(sel);
+              if (btn) (btn as HTMLElement).click();
+            });
+
+            // Ensure caption text is 100% visible, expanded, and styled crisply
             const style = document.createElement('style');
             style.textContent = `
               ._5p1e, ._5ptz, ._1p1t, [data-testid="post_message"], [class*="userContent"], [class*="caption"] {
@@ -849,7 +866,7 @@ app.get("/api/screenshot", async (req, res) => {
           } catch(e){}
         });
 
-        // Generous 4.5 seconds render wait to guarantee all post photos and video thumbnails finish loading
+        // 3. Generous render wait to guarantee all post photos and video thumbnails finish loading
         await new Promise(r => setTimeout(r, 4500));
 
         // Find the full Facebook embed card element (#facebook / ._5p3y / body) to capture Caption + Header + Video + Metrics
