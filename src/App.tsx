@@ -80,35 +80,87 @@ export default function App() {
   });
 
   // Available sheets list inside selected Spreadsheet
-  const [sheetsList, setSheetsList] = useState<string[]>([
-    'Facebook: Post Insights',
-    'Data VT',
-    'Data entry',
-    'JUN',
-    'JUL',
-    'inputrange',
-    'note',
-    'Social_Posts_2026',
-    'DASHBOARD',
-    'LOGS'
-  ]);
-
-  // Config settings
-  const [config, setConfig] = useState<ConfigSettings>({
-    spreadsheetId: 'demo-sheet-2026',
-    sourceSheetName: 'Facebook: Post Insights',
-    startDate: '',
-    endDate: '',
-    sortBy: 'interact',
-    sortOrder: 'desc',
-    maxPostsPerPillar: 10000,
-    unlimitedPosts: true,
-    includeEmptyPillar: false,
-    classifyMode: 'sheet',
-    productKeywords: 'KHUNG VĨNH TƯỜNG TITAN, TẤM SIÊU CHỐNG MỐC, TRẦN VĨNH TƯỜNG SIÊU BẢO VỆ, NGỌC LỤC BẢO, SIÊU CHỐNG CHÁY, VĨNH TƯỜNG, TẤM THẠCH CAO',
-    promotionKeywords: 'Phi mã vượt đỉnh, Chiến thần siêu bảo vệ',
-    minigameKeywords: 'Minigame, mini game',
+  const [sheetsList, setSheetsList] = useState<string[]>(() => {
+    try {
+      const cached = localStorage.getItem('social_pillar_sheets_list');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      'Facebook: Post Insights',
+      'Data VT',
+      'Data entry',
+      'JUN',
+      'JUL',
+      'inputrange',
+      'note',
+      'Social_Posts_2026',
+      'DASHBOARD',
+      'LOGS'
+    ];
   });
+
+  // Save sheetsList to localStorage when changed
+  useEffect(() => {
+    try {
+      localStorage.setItem('social_pillar_sheets_list', JSON.stringify(sheetsList));
+    } catch (e) {
+      console.error('Failed to save sheets list:', e);
+    }
+  }, [sheetsList]);
+
+  // Config settings with immediate persistent storage
+  const [config, setConfig] = useState<ConfigSettings>(() => {
+    try {
+      const cached = localStorage.getItem('social_pillar_config');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            spreadsheetId: parsed.spreadsheetId || 'demo-sheet-2026',
+            sourceSheetName: parsed.sourceSheetName || 'Facebook: Post Insights',
+            startDate: parsed.startDate || '',
+            endDate: parsed.endDate || '',
+            sortBy: parsed.sortBy || 'interact',
+            sortOrder: parsed.sortOrder || 'desc',
+            maxPostsPerPillar: parsed.maxPostsPerPillar ?? 10000,
+            unlimitedPosts: parsed.unlimitedPosts ?? true,
+            includeEmptyPillar: parsed.includeEmptyPillar ?? false,
+            classifyMode: parsed.classifyMode || 'sheet',
+            productKeywords: parsed.productKeywords || 'KHUNG VĨNH TƯỜNG TITAN, TẤM SIÊU CHỐNG MỐC, TRẦN VĨNH TƯỜNG SIÊU BẢO VỆ, NGỌC LỤC BẢO, SIÊU CHỐNG CHÁY, VĨNH TƯỜNG, TẤM THẠCH CAO',
+            promotionKeywords: parsed.promotionKeywords || 'Phi mã vượt đỉnh, Chiến thần siêu bảo vệ',
+            minigameKeywords: parsed.minigameKeywords || 'Minigame, mini game',
+          };
+        }
+      }
+    } catch {}
+    return {
+      spreadsheetId: 'demo-sheet-2026',
+      sourceSheetName: 'Facebook: Post Insights',
+      startDate: '',
+      endDate: '',
+      sortBy: 'interact',
+      sortOrder: 'desc',
+      maxPostsPerPillar: 10000,
+      unlimitedPosts: true,
+      includeEmptyPillar: false,
+      classifyMode: 'sheet',
+      productKeywords: 'KHUNG VĨNH TƯỜNG TITAN, TẤM SIÊU CHỐNG MỐC, TRẦN VĨNH TƯỜNG SIÊU BẢO VỆ, NGỌC LỤC BẢO, SIÊU CHỐNG CHÁY, VĨNH TƯỜNG, TẤM THẠCH CAO',
+      promotionKeywords: 'Phi mã vượt đỉnh, Chiến thần siêu bảo vệ',
+      minigameKeywords: 'Minigame, mini game',
+    };
+  });
+
+  // Save config to localStorage immediately whenever changed
+  useEffect(() => {
+    try {
+      localStorage.setItem('social_pillar_config', JSON.stringify(config));
+    } catch (e) {
+      console.error('Failed to save config:', e);
+    }
+  }, [config]);
 
   // Generated Dashboard groups
   const [groups, setGroups] = useState<PillarGroup[]>([]);
@@ -135,11 +187,10 @@ export default function App() {
     }
   }, [logs]);
 
-  // Load cache of groups and config if available
+  // Load cache of groups and last updated if available
   useEffect(() => {
     try {
       const cachedGroups = localStorage.getItem('social_pillar_groups');
-      const cachedConfig = localStorage.getItem('social_pillar_config');
       const cachedLastUpdate = localStorage.getItem('social_pillar_last_update');
       
       if (cachedGroups) {
@@ -176,25 +227,23 @@ export default function App() {
         collapsedGroups.sort((a, b) => a.pillar.localeCompare(b.pillar));
         setGroups(collapsedGroups);
       }
-      if (cachedConfig) setConfig(JSON.parse(cachedConfig));
       if (cachedLastUpdate) setLastUpdated(cachedLastUpdate);
     } catch (e) {
       console.error('Failed to load cached dashboard data:', e);
     }
   }, []);
 
-  // Save cache of groups and config when changed
+  // Save cache of groups when changed
   useEffect(() => {
     if (groups.length > 0) {
       try {
         localStorage.setItem('social_pillar_groups', JSON.stringify(groups));
-        localStorage.setItem('social_pillar_config', JSON.stringify(config));
         localStorage.setItem('social_pillar_last_update', lastUpdated);
       } catch (e) {
         console.error('Failed to cache dashboard:', e);
       }
     }
-  }, [groups, config, lastUpdated]);
+  }, [groups, lastUpdated]);
 
   // Initialize auth listener (optional Google Login)
   useEffect(() => {
