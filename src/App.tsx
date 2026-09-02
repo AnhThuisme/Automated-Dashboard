@@ -938,6 +938,7 @@ export default function App() {
                 lastUpdated={lastUpdated}
                 onUpdatePostPillar={handleUpdatePostPillar}
                 onUpdatePostProductPillar={handleUpdatePostProductPillar}
+                isAdmin={userRole === 'ADMIN'}
               />
             )}
 

@@ -54,13 +54,15 @@ interface DashboardTabProps {
   lastUpdated: string;
   onUpdatePostPillar?: (post: PostItem, newPillar: string) => void;
   onUpdatePostProductPillar?: (post: PostItem, newProductPillar: string) => void;
+  isAdmin?: boolean;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({ 
   groups, 
   lastUpdated, 
   onUpdatePostPillar,
-  onUpdatePostProductPillar
+  onUpdatePostProductPillar,
+  isAdmin = false
 }) => {
   const [activeTab, setActiveTab] = useState<string>('OVERVIEW');
   const currentActiveTab = (activeTab === 'OVERVIEW' || groups.some(g => g.pillar === activeTab)) ? activeTab : 'OVERVIEW';
@@ -1345,22 +1347,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <span className="text-xs text-slate-400 font-semibold bg-slate-50 border border-slate-100 px-2.5 py-1.5 rounded-lg mr-1">
                       Số lượng: <span className="font-mono text-slate-700">{group.posts.length}</span> bài viết
                     </span>
-                    <button
-                      onClick={() => copyPostLinks(group.posts)}
-                      className="bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 font-semibold text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                      title="Sao chép toàn bộ link bài viết trong bảng này"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      Sao chép tất cả Link
-                    </button>
-                    <button
-                      onClick={() => captureAllLinkScreenshots(group.posts, group.pillar)}
-                      className="bg-purple-50 border border-purple-200 text-purple-600 hover:bg-purple-100 hover:text-purple-700 font-semibold text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                      title="Chụp ảnh màn hình cho từng link bài viết trong bảng này"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      Tự động chụp tất cả Link
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => captureAllLinkScreenshots(group.posts, group.pillar)}
+                        className="bg-purple-50 border border-purple-200 text-purple-600 hover:bg-purple-100 hover:text-purple-700 font-semibold text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                        title="Chụp ảnh màn hình cho từng link bài viết trong bảng này"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Tự động chụp tất cả Link
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1456,8 +1452,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                     <span className="line-clamp-3 text-ellipsis overflow-hidden text-left" title={post.post}>{post.post}</span>
                                   )}
 
-                                  {/* Screenshot Link Button */}
-                                  {(post.link || isLink) && (
+                                  {/* Screenshot Link Button (Admin only) */}
+                                  {isAdmin && (post.link || isLink) && (
                                     <button
                                       onClick={() => {
                                         const targetUrl = post.link || (post.post.startsWith('http') ? post.post : `https://${post.post}`);
@@ -1525,7 +1521,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <div className="flex items-center justify-end gap-3 shrink-0">
             {filteredCapturedImages.length > 0 && (
               <>
-
                 <button
                   onClick={() => {
                     const allExpanded = filteredCapturedImages.every(img => expandedImages[img.id]);
@@ -1542,92 +1537,106 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <span>{filteredCapturedImages.every(img => expandedImages[img.id]) ? 'Thu gọn tất cả ảnh' : 'Mở rộng toàn bộ ảnh'}</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    const updated = capturedImages.filter(img => {
-                      if (currentActiveTab === 'OVERVIEW') {
-                        return img.pillarName !== 'OVERVIEW' && img.pillarName && !img.title.toLowerCase().includes('tổng quan');
-                      }
-                      return img.pillarName !== currentActiveTab;
-                    });
-                    saveCaptures(updated);
-                  }}
-                  className="text-xs text-rose-500 hover:text-rose-600 font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Xoá tất cả {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      const updated = capturedImages.filter(img => {
+                        if (currentActiveTab === 'OVERVIEW') {
+                          return img.pillarName !== 'OVERVIEW' && img.pillarName && !img.title.toLowerCase().includes('tổng quan');
+                        }
+                        return img.pillarName !== currentActiveTab;
+                      });
+                      saveCaptures(updated);
+                    }}
+                    className="text-xs text-rose-500 hover:text-rose-600 font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Xoá tất cả {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}
+                  </button>
+                )}
               </>
             )}
           </div>
         </div>
 
-        {/* Empty state: full drag & drop container */}
+        {/* Empty state */}
         {filteredCapturedImages.length === 0 ? (
-          <div 
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
-              isDragging 
-                ? 'border-[#10B5A5] bg-teal-50/40 scale-[0.99]' 
-                : 'border-slate-300 hover:border-[#10B5A5] hover:bg-slate-100/30'
-            }`}
-            onClick={() => {
-              const el = document.getElementById('manual-screenshot-upload-empty');
-              if (el) el.click();
-            }}
-          >
-            <input 
-              type="file" 
-              id="manual-screenshot-upload-empty" 
-              className="hidden" 
-              accept="image/*" 
-              onChange={handleFileChange}
-            />
-            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 mb-3 group-hover:bg-teal-50 group-hover:text-[#10B5A5] transition-all">
-              <Upload className="w-6 h-6" />
-            </div>
-            <h4 className="text-sm font-bold text-slate-700">Chưa có ảnh chụp màn hình nào trong pillar này</h4>
-            <p className="text-xs text-slate-500 mt-1.5 max-w-md">
-              Hệ thống hỗ trợ chụp tự động, tuy nhiên nếu ảnh chụp bị mờ hoặc bị chặn bởi đăng nhập Facebook, bạn có thể **Kéo & Thả ảnh chụp màn hình của bạn vào đây** hoặc click để chọn tải ảnh lên thủ công.
-            </p>
-            <div className="mt-4 px-4 py-2 bg-[#10B5A5] text-white font-semibold text-xs rounded-lg shadow-sm hover:bg-teal-600 transition-all">
-              Tải ảnh lên cho {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {/* Standard manual upload card inside grid */}
+          isAdmin ? (
             <div 
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[160px] p-2 ${
+              className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
                 isDragging 
-                  ? 'border-[#10B5A5] bg-teal-50/40 scale-[0.98]' 
+                  ? 'border-[#10B5A5] bg-teal-50/40 scale-[0.99]' 
                   : 'border-slate-300 hover:border-[#10B5A5] hover:bg-slate-100/30'
               }`}
               onClick={() => {
-                const el = document.getElementById('manual-screenshot-upload-grid');
+                const el = document.getElementById('manual-screenshot-upload-empty');
                 if (el) el.click();
               }}
             >
               <input 
                 type="file" 
-                id="manual-screenshot-upload-grid" 
+                id="manual-screenshot-upload-empty" 
                 className="hidden" 
                 accept="image/*" 
                 onChange={handleFileChange}
               />
-              <Upload className="w-5 h-5 text-slate-400 mb-1.5" />
-              <p className="text-[10px] font-bold text-slate-600">Thêm ảnh cho {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}</p>
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 mb-3 group-hover:bg-teal-50 group-hover:text-[#10B5A5] transition-all">
+                <Upload className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-700">Chưa có ảnh chụp màn hình nào trong pillar này</h4>
+              <p className="text-xs text-slate-500 mt-1.5 max-w-md">
+                Hệ thống hỗ trợ chụp tự động, tuy nhiên nếu ảnh chụp bị mờ hoặc bị chặn bởi đăng nhập Facebook, bạn có thể **Kéo & Thả ảnh chụp màn hình của bạn vào đây** hoặc click để chọn tải ảnh lên thủ công.
+              </p>
+              <div className="mt-4 px-4 py-2 bg-[#10B5A5] text-white font-semibold text-xs rounded-lg shadow-sm hover:bg-teal-600 transition-all">
+                Tải ảnh lên cho {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}
+              </div>
             </div>
+          ) : (
+            <div className="border border-slate-200 bg-white rounded-xl p-8 flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
+                <ImageIcon className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-700">Chưa có ảnh chụp minh chứng nào trong pillar này</h4>
+              <p className="text-xs text-slate-500 mt-1">Ảnh minh chứng sẽ được cập nhật khi có dữ liệu từ Quản trị viên.</p>
+            </div>
+          )
+        ) : (
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {/* Standard manual upload card inside grid (Admin only) */}
+            {isAdmin && (
+              <div 
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[160px] p-2 ${
+                  isDragging 
+                    ? 'border-[#10B5A5] bg-teal-50/40 scale-[0.98]' 
+                    : 'border-slate-300 hover:border-[#10B5A5] hover:bg-slate-100/30'
+                }`}
+                onClick={() => {
+                  const el = document.getElementById('manual-screenshot-upload-grid');
+                  if (el) el.click();
+                }}
+              >
+                <input 
+                  type="file" 
+                  id="manual-screenshot-upload-grid" 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleFileChange}
+                />
+                <Upload className="w-5 h-5 text-slate-400 mb-1.5" />
+                <p className="text-[10px] font-bold text-slate-600">Thêm ảnh cho {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}</p>
+              </div>
+            )}
 
             {/* List of captured screenshots */}
             {filteredCapturedImages.map((img) => (
               <div key={img.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col">
                 <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between gap-1.5">
-                  {editingImgId === img.id ? (
+                  {isAdmin && editingImgId === img.id ? (
                     <div className="flex-1 min-w-0 flex items-center gap-1 bg-white p-1 rounded border border-slate-200">
                       <input
                         type="text"
@@ -1673,37 +1682,41 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   ) : (
                     <div className="max-w-[55%] truncate">
                       <div 
-                        className="flex items-center gap-1 cursor-pointer hover:text-[#10B5A5] group/title min-w-0"
+                        className={`flex items-center gap-1 ${isAdmin ? 'cursor-pointer hover:text-[#10B5A5] group/title' : ''} min-w-0`}
                         onClick={() => {
-                          setEditingImgId(img.id);
-                          setEditingTitle(img.title);
+                          if (isAdmin) {
+                            setEditingImgId(img.id);
+                            setEditingTitle(img.title);
+                          }
                         }}
-                        title="Click để đổi tên ảnh"
+                        title={isAdmin ? "Click để đổi tên ảnh" : img.title}
                       >
                         <h4 className="text-xs font-bold text-slate-700 truncate" title={img.title}>{img.title}</h4>
-                        <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover/title:text-[#10B5A5] opacity-0 group-hover/title:opacity-100 transition-all shrink-0" />
+                        {isAdmin && <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover/title:text-[#10B5A5] opacity-0 group-hover/title:opacity-100 transition-all shrink-0" />}
                       </div>
                       <span className="text-[9px] text-slate-400 font-mono">{img.timestamp}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-0.5">
-                    {/* Recapture Action */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        recaptureScreenshot(img);
-                      }}
-                      disabled={screenshotLoading[img.id] || (isCapturing && img.type === 'ELEMENT')}
-                      className="p-1 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 rounded-lg transition-all cursor-pointer flex items-center"
-                      title="Chụp lại ảnh minh chứng cho liên kết hoặc bảng này"
-                    >
-                      {screenshotLoading[img.id] ? (
-                        <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
-                      ) : (
-                        <RefreshCw className="w-3 h-3" />
-                      )}
-                      {colsCount < 3 && <span className="text-[10px] font-bold ml-1 hidden sm:inline">Chụp lại</span>}
-                    </button>
+                    {/* Recapture Action (Admin only) */}
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          recaptureScreenshot(img);
+                        }}
+                        disabled={screenshotLoading[img.id] || (isCapturing && img.type === 'ELEMENT')}
+                        className="p-1 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 rounded-lg transition-all cursor-pointer flex items-center"
+                        title="Chụp lại ảnh minh chứng cho liên kết hoặc bảng này"
+                      >
+                        {screenshotLoading[img.id] ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3" />
+                        )}
+                        {colsCount < 3 && <span className="text-[10px] font-bold ml-1 hidden sm:inline">Chụp lại</span>}
+                      </button>
+                    )}
 
                     {/* Expand/Collapse Height Action */}
                     <button
@@ -1739,13 +1752,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     >
                       <Download className="w-3 h-3" />
                     </a>
-                    <button
-                      onClick={() => saveCaptures(capturedImages.filter(c => c.id !== img.id))}
-                      className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                      title="Xoá ảnh"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => saveCaptures(capturedImages.filter(c => c.id !== img.id))}
+                        className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                        title="Xoá ảnh"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex-1 bg-slate-50 relative group/img overflow-hidden border-b border-slate-100">
