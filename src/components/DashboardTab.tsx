@@ -477,67 +477,72 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       return;
     }
 
-    setToastMessage(`Đang bắt đầu chụp tuần tự từng link bài viết từ Facebook cho ${links.length} liên kết...`);
+    setToastMessage(`Đang bắt đầu chụp tự động cho ${links.length} liên kết...`);
     let count = 0;
     
-    // Strictly sequential loop - process 1 link at a time
-    for (let i = 0; i < links.length; i++) {
-      const item = links[i];
-      try {
-        setToastMessage(`Đang chụp link (${i + 1}/${links.length}): ${item.post.slice(0, 30)}...`);
-        setScreenshotLoading(prev => ({ ...prev, [item.url]: true }));
-        
-        let finalImage = '';
+    // Batch processing (2 concurrent links for optimal speed & server stability)
+    const concurrency = 2;
+    for (let i = 0; i < links.length; i += concurrency) {
+      const batch = links.slice(i, i + concurrency);
+      
+      await Promise.all(batch.map(async (item, batchIdx) => {
+        const globalIdx = i + batchIdx + 1;
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout per link
-          const response = await fetch(`/api/screenshot?url=${encodeURIComponent(item.url)}&title=${encodeURIComponent(item.post)}`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.screenshotUrl) {
-              finalImage = await cropScreenshot(data.screenshotUrl);
+          setToastMessage(`Đang chụp (${globalIdx}/${links.length}): ${item.post.slice(0, 25)}... [Đã lưu: ${count} ảnh]`);
+          setScreenshotLoading(prev => ({ ...prev, [item.url]: true }));
+          
+          let finalImage = '';
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout per link
+            const response = await fetch(`/api/screenshot?url=${encodeURIComponent(item.url)}&title=${encodeURIComponent(item.post)}`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success && data.screenshotUrl) {
+                finalImage = await cropScreenshot(data.screenshotUrl);
+              }
             }
+          } catch (e: any) {
+            console.warn(`Lỗi khi chụp link ${item.url}`, e);
           }
-        } catch (e: any) {
-          console.warn(`Lỗi khi kết nối trình duyệt Headless Chrome cho link ${item.url}`, e);
-        }
 
-        if (finalImage) {
-          const now = new Date();
-          const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-          
-          const newCaptureId = Math.random().toString(36).substring(2, 9);
-          const newCapture = {
-            id: newCaptureId,
-            url: finalImage,
-            timestamp: `${timeStr} - ${dateStr}`,
-            title: `Ảnh chụp bài viết [${groupName}]: ${item.post.slice(0, 40)}${item.post.length > 40 ? '...' : ''}`,
-            type: 'LINK' as const,
-            targetUrl: item.url,
-            postTitle: item.post,
-            pillarName: groupName,
-            version: 'v4_full_photo_dynamic'
-          };
-          
-          setCapturedImages(prev => {
-            const filtered = prev.filter(img => img.targetUrl !== item.url);
-            const updated = [newCapture, ...filtered];
-            saveCapturesToIndexedDB(updated).catch(err => console.error(err));
-            return updated;
-          });
-          count++;
+          if (finalImage) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+            
+            const newCaptureId = Math.random().toString(36).substring(2, 9);
+            const newCapture = {
+              id: newCaptureId,
+              url: finalImage,
+              timestamp: `${timeStr} - ${dateStr}`,
+              title: `Ảnh chụp bài viết [${groupName}]: ${item.post.slice(0, 40)}${item.post.length > 40 ? '...' : ''}`,
+              type: 'LINK' as const,
+              targetUrl: item.url,
+              postTitle: item.post,
+              pillarName: groupName,
+              version: 'v4_full_photo_dynamic'
+            };
+            
+            count++;
+            setCapturedImages(prev => {
+              const filtered = prev.filter(img => img.targetUrl !== item.url);
+              const updated = [newCapture, ...filtered];
+              saveCapturesToIndexedDB(updated).catch(err => console.error(err));
+              return updated;
+            });
+          }
+        } catch (err) {
+          console.error(`Lỗi khi xử lý link bài viết: ${item.url}`, err);
+        } finally {
+          setScreenshotLoading(prev => ({ ...prev, [item.url]: false }));
         }
-      } catch (err) {
-        console.error(`Lỗi khi xử lý link bài viết: ${item.url}`, err);
-      } finally {
-        setScreenshotLoading(prev => ({ ...prev, [item.url]: false }));
-      }
+      }));
     }
     
     setToastMessage(`Hoàn tất! Đã chụp thành công màn hình Web cho ${count}/${links.length} bài viết.`);
-    setTimeout(() => setToastMessage(''), 4000);
+    setTimeout(() => setToastMessage(''), 5000);
   };
 
   const saveCaptures = (newCaptures: typeof capturedImages) => {
