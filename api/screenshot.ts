@@ -104,6 +104,43 @@ export default async function handler(req: any, res: any) {
     console.warn(`[Vercel Screenshot API] Microlink fallback:`, microlinkErr);
   }
 
+  // Try WordPress mShots
+  try {
+    const wpUrl = `https://s0.wp.com/mshots/v1/${encodeURIComponent(originalUrl)}?w=900&h=1100`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => clearTimeout(timeoutId), 12000);
+    const wpRes = await fetch(wpUrl, { signal: controller.signal });
+    if (wpRes.ok) {
+      const buffer = await wpRes.arrayBuffer();
+      if (buffer.byteLength > 5000) {
+        const base64 = Buffer.from(buffer).toString('base64');
+        const mimeType = wpRes.headers.get("content-type") || "image/jpeg";
+        return res.status(200).json({
+          success: true,
+          screenshotUrl: `data:${mimeType};base64,${base64}`
+        });
+      }
+    }
+  } catch (wpErr) {}
+
+  // Try direct Facebook / OpenGraph image
+  if (parsedImage && parsedImage.startsWith('http')) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => clearTimeout(timeoutId), 10000);
+      const imgRes = await fetch(parsedImage, { signal: controller.signal });
+      if (imgRes.ok) {
+        const buffer = await imgRes.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
+        return res.status(200).json({
+          success: true,
+          screenshotUrl: `data:${mimeType};base64,${base64}`
+        });
+      }
+    } catch (imgErr) {}
+  }
+
   // Generate clean HD Social SVG Card (with 0% broken grey images)
   let domain = 'facebook.com';
   try {

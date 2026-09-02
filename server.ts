@@ -1129,7 +1129,7 @@ app.get("/api/screenshot", async (req, res) => {
       const mlUrl = isFacebook 
         ? `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(cleanUrl)}&width=${mlWidth}&show_text=true&locale=vi_VN` 
         : cleanUrl;
-      const mlWait = isFacebook ? 6000 : 3500;
+      const mlWait = isFacebook ? 5000 : 3000;
 
       const apiUrl = [
         `https://api.microlink.io`,
@@ -1149,7 +1149,7 @@ app.get("/api/screenshot", async (req, res) => {
 
       console.log(`[Screenshot API] [Hàng đợi 1 - Microlink] Đang chụp: ${mlUrl}`);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       const response = await fetch(apiUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
@@ -1171,11 +1171,73 @@ app.get("/api/screenshot", async (req, res) => {
       console.warn(`[Screenshot API] Microlink thất bại:`, microlinkErr.message);
     }
 
-    // 2. No real screenshot was captured — return error instead of generating a fake card
-    console.warn(`[Screenshot API] Không thể chụp ảnh thực cho: ${targetUrl}. Puppeteer và Microlink đều thất bại.`);
+    // 2. Attempt 2: WordPress mShots CDN
+    try {
+      const wpUrl = `https://s0.wp.com/mshots/v1/${encodeURIComponent(cleanUrl)}?w=900&h=1100`;
+      console.log(`[Screenshot API] [Hàng đợi 2 - WP mShots] Đang chụp: ${cleanUrl}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const wpRes = await fetch(wpUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (wpRes.ok) {
+        const buffer = await wpRes.arrayBuffer();
+        if (buffer.byteLength > 5000) {
+          const base64 = Buffer.from(buffer).toString('base64');
+          const mimeType = wpRes.headers.get("content-type") || "image/jpeg";
+          console.log(`[Screenshot API] [Hàng đợi 2] Chụp thành công bằng WordPress mShots!`);
+          return res.json({
+            success: true,
+            screenshotUrl: `data:${mimeType};base64,${base64}`
+          });
+        }
+      }
+    } catch (wpErr: any) {
+      console.warn(`[Screenshot API] WordPress mShots thất bại:`, wpErr.message);
+    }
+
+    // 3. Attempt 3: Direct Facebook CDN Photo Extraction (Trích xuất ảnh bài viết thực từ Facebook)
+    if (parsedImage && parsedImage.startsWith('http')) {
+      try {
+        console.log(`[Screenshot API] [Hàng đợi 3 - CDN Image] Tải ảnh trực tiếp từ Facebook CDN: ${parsedImage.slice(0, 60)}...`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const imgRes = await fetch(parsedImage, {
+          headers: {
+            "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8"
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (imgRes.ok) {
+          const buffer = await imgRes.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString('base64');
+          const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
+          console.log(`[Screenshot API] [Hàng đợi 3] Lấy ảnh bài viết thành công từ Facebook CDN!`);
+          return res.json({
+            success: true,
+            screenshotUrl: `data:${mimeType};base64,${base64}`
+          });
+        }
+      } catch (imgErr: any) {
+        console.warn(`[Screenshot API] Tải ảnh Facebook CDN thất bại:`, imgErr.message);
+      }
+    }
+
+    // 4. No screenshot or image could be retrieved
+    console.warn(`[Screenshot API] Không thể chụp ảnh thực cho: ${targetUrl}. Tất cả hàng đợi đều thất bại.`);
     return res.status(502).json({
       success: false,
-      error: 'Không thể chụp ảnh màn hình thực. Puppeteer (Headless Chrome) và Microlink đều không khả dụng. Vui lòng tải ảnh chụp thủ công.'
+      error: 'Không thể chụp ảnh màn hình tự động cho link này do trang web chặn truy cập. Vui lòng kéo thả hoặc tải ảnh chụp thủ công.'
     });
 
   } catch (error: any) {
