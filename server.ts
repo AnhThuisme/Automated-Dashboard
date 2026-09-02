@@ -784,17 +784,28 @@ app.get("/api/screenshot", async (req, res) => {
       const fs = await import('fs');
       let chromePath: string | undefined = undefined;
 
+      // Priority 0: Environment variables (Render, Docker, Cloud)
+      if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+        console.log(`[Screenshot API] Sử dụng Chrome từ biến môi trường PUPPETEER_EXECUTABLE_PATH: ${chromePath}`);
+      } else if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
+        chromePath = process.env.CHROME_BIN;
+        console.log(`[Screenshot API] Sử dụng Chrome từ biến môi trường CHROME_BIN: ${chromePath}`);
+      }
+
       // Priority 1: Use Puppeteer's bundled Chrome for Testing (v25+ returns a Promise)
-      try {
-        const puppeteerPath = (puppeteer as any).executablePath
-          ? await Promise.resolve((puppeteer as any).executablePath())
-          : undefined;
-        if (typeof puppeteerPath === 'string' && fs.existsSync(puppeteerPath)) {
-          chromePath = puppeteerPath;
-          console.log(`[Screenshot API] Sử dụng Chrome của Puppeteer: ${chromePath}`);
+      if (!chromePath) {
+        try {
+          const puppeteerPath = (puppeteer as any).executablePath
+            ? await Promise.resolve((puppeteer as any).executablePath())
+            : undefined;
+          if (typeof puppeteerPath === 'string' && fs.existsSync(puppeteerPath)) {
+            chromePath = puppeteerPath;
+            console.log(`[Screenshot API] Sử dụng Chrome của Puppeteer: ${chromePath}`);
+          }
+        } catch(e) {
+          console.warn('[Screenshot API] Không thể lấy executablePath từ Puppeteer:', (e as any).message);
         }
-      } catch(e) {
-        console.warn('[Screenshot API] Không thể lấy executablePath từ Puppeteer:', (e as any).message);
       }
 
       // Priority 2: Fall back to system Chrome paths
