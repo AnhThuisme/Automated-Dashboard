@@ -87,37 +87,56 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     });
   }, [capturedImages, currentActiveTab]);
 
+  // Helper to detect if a captured image is a fake SVG card or Canvas-generated card (not a real screenshot)
+  const isFakeCard = (img: any): boolean => {
+    if (!img || !img.url) return false;
+    // SVG-based fallback cards from server
+    if (img.url.startsWith('data:image/svg+xml')) return true;
+    // Canvas-generated cards (from old generateClientSocialCard function)
+    if (img.title && img.title.startsWith('Thẻ bài viết đồng bộ')) return true;
+    return false;
+  };
+
   useEffect(() => {
-    const loadAndMigrateCaptures = async () => {
+    const loadAndCleanCaptures = async () => {
+      let loadedCaptures: any[] = [];
       // 1. Load from IndexedDB
       try {
         const idbCaptures = await getCapturesFromIndexedDB();
         if (idbCaptures && idbCaptures.length > 0) {
-          setCapturedImages(idbCaptures);
-          return;
+          loadedCaptures = idbCaptures;
         }
       } catch (err) {
         console.error('Lỗi khi đọc từ IndexedDB:', err);
       }
 
       // 2. Migration: read from localStorage if present
-      try {
-        const cached = localStorage.getItem('social_pillar_captures');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed && parsed.length > 0) {
-            setCapturedImages(parsed);
-            await saveCapturesToIndexedDB(parsed);
-            // Delete from localStorage to free up the 5MB quota
-            localStorage.removeItem('social_pillar_captures');
+      if (loadedCaptures.length === 0) {
+        try {
+          const cached = localStorage.getItem('social_pillar_captures');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.length > 0) {
+              loadedCaptures = parsed;
+              localStorage.removeItem('social_pillar_captures');
+            }
           }
+        } catch (err) {
+          console.error('Lỗi khi khôi phục/di chuyển ảnh từ localStorage:', err);
         }
-      } catch (err) {
-        console.error('Lỗi khi khôi phục/di chuyển ảnh từ localStorage:', err);
       }
+
+      // 3. Filter out fake SVG/Canvas cards — keep only real screenshots and manually uploaded images
+      const cleanCaptures = loadedCaptures.filter(img => !isFakeCard(img));
+      if (cleanCaptures.length !== loadedCaptures.length) {
+        console.log(`[Cleanup] Đã loại bỏ ${loadedCaptures.length - cleanCaptures.length} ảnh thẻ giả (SVG/Canvas). Giữ lại ${cleanCaptures.length} ảnh chụp thực.`);
+        await saveCapturesToIndexedDB(cleanCaptures);
+      }
+
+      setCapturedImages(cleanCaptures);
     };
 
-    loadAndMigrateCaptures();
+    loadAndCleanCaptures();
   }, []);
 
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -442,451 +461,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   };
 
-  // Helper function to render a 100% uniform, ultra-crisp HD Social Post Card (Light Post & Dark Reel Player)
-  const generateClientSocialCard = (item: {
-    post: string;
-    airedDate?: string;
-    reach?: number;
-    interact?: number;
-    link?: string;
-    pillar?: string;
-    productPillar?: string;
-  }): string => {
-    const isReel = Boolean(item.link && (item.link.toLowerCase().includes('/reel/') || item.link.toLowerCase().includes('fb.watch')));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 1000;
-    canvas.height = 1350;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-
-    if (isReel) {
-      // ==========================================
-      // DARK-MODE FACEBOOK REELS PLAYER (1:1 REAL)
-      // ==========================================
-      ctx.fillStyle = '#050505';
-      ctx.fillRect(0, 0, 1000, 1350);
-
-      // 1. Top Header Bar: Yellow Avatar + Brand + Controls
-      const avatarX = 80, avatarY = 80, avatarR = 34;
-      ctx.fillStyle = '#eab308'; // Bright Yellow Vĩnh Tường Circle
-      ctx.beginPath();
-      ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Avatar Logo Text "VT"
-      ctx.fillStyle = '#000000';
-      ctx.font = 'black 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('VT', avatarX, avatarY);
-
-      // Brand Name "VĨNH TƯỜNG"
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.fillText('VĨNH TƯỜNG', 135, 72);
-
-      // Verified Checkmark Badge
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(348, 68, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#000000';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('✓', 348, 69);
-
-      // Subtitle "🌐 Public"
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#a1a1aa';
-      ctx.font = '500 20px sans-serif';
-      ctx.fillText('🌐 Public', 135, 100);
-
-      // Top Right Player Controls (Pause, Mute, Menu)
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('⏸️   🔊   •••', 940, 80);
-
-      // 2. Center Video Frame (Gold / Dark Vĩnh Tường Visual Container)
-      const videoY = 160;
-      const videoHeight = 780;
-
-      const videoGrad = ctx.createLinearGradient(0, videoY, 1000, videoY + videoHeight);
-      videoGrad.addColorStop(0, '#1c1917');
-      videoGrad.addColorStop(0.5, '#78350f');
-      videoGrad.addColorStop(1, '#1c1917');
-      ctx.fillStyle = videoGrad;
-      ctx.fillRect(0, videoY, 1000, videoHeight);
-
-      // Gold Banner Frame Graphic inside Video Container
-      ctx.fillStyle = 'rgba(250, 204, 21, 0.15)';
-      ctx.fillRect(80, videoY + 120, 840, 540);
-      ctx.strokeStyle = '#fef08a';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(80, videoY + 120, 840, 540);
-
-      ctx.fillStyle = '#fef08a';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('ĐÓN XEM TẠI', 500, videoY + 330);
-      ctx.font = 'black 48px sans-serif';
-      ctx.fillText('FANPAGE VĨNH TƯỜNG', 500, videoY + 410);
-
-      // Play Icon in Center
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-      ctx.beginPath();
-      ctx.arc(500, videoY + videoHeight / 2, 54, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(488, videoY + videoHeight / 2 - 24);
-      ctx.lineTo(524, videoY + videoHeight / 2);
-      ctx.lineTo(488, videoY + videoHeight / 2 + 24);
-      ctx.closePath();
-      ctx.fill();
-
-      // Right Carousel Arrow Button
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.beginPath();
-      ctx.arc(950, videoY + videoHeight / 2, 38, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('›', 950, videoY + videoHeight / 2);
-
-      // 3. Bottom Area: Caption & Audio (Left) + Interactive Reaction Icons (Right)
-      const bottomY = 980;
-
-      // CAPTION TEXT (Bottom Left Area)
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '500 24px/36px -apple-system, BlinkMacSystemFont, sans-serif';
-
-      const words = item.post.split(' ');
-      let line = '🤲 ';
-      let currY = bottomY + 30;
-      const maxW = 700;
-
-      for (let n = 0; n < words.length; n++) {
-        const testLine = line + words[n] + ' ';
-        if (ctx.measureText(testLine).width > maxW && n > 0) {
-          ctx.fillText(line, 60, currY);
-          line = words[n] + ' ';
-          currY += 38;
-          if (currY > bottomY + 160) {
-            line += '... See more';
-            break;
-          }
-        } else {
-          line = testLine;
-        }
-      }
-      ctx.fillText(line, 60, currY);
-      currY += 50;
-
-      // Audio Track Subtitle
-      ctx.fillStyle = '#d4d4d8';
-      ctx.font = '500 20px sans-serif';
-      ctx.fillText('🎵 VĨNH TƯỜNG · Original audio', 60, currY);
-
-      // RIGHT INTERACTIVE ENGAGEMENT ICONS (👍 Like, 💬 Comment, ↗️ Share)
-      const interactCount = item.interact || 183;
-      const commentsCount = Math.round(interactCount * 0.15) || 13;
-      const sharesCount = Math.round(interactCount * 0.05) || 6;
-
-      // Like Button (👍)
-      ctx.fillStyle = '#27272a';
-      ctx.beginPath();
-      ctx.arc(920, bottomY + 30, 36, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '26px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('👍', 920, bottomY + 32);
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(interactCount.toLocaleString('vi-VN'), 920, bottomY + 88);
-
-      // Comment Button (💬)
-      ctx.fillStyle = '#27272a';
-      ctx.beginPath();
-      ctx.arc(920, bottomY + 140, 36, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '26px sans-serif';
-      ctx.fillText('💬', 920, bottomY + 142);
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(commentsCount.toLocaleString('vi-VN'), 920, bottomY + 198);
-
-      // Share Button (↗️)
-      ctx.fillStyle = '#27272a';
-      ctx.beginPath();
-      ctx.arc(920, bottomY + 250, 36, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '26px sans-serif';
-      ctx.fillText('↗️', 920, bottomY + 252);
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(sharesCount.toLocaleString('vi-VN'), 920, bottomY + 308);
-
-      return canvas.toDataURL('image/png');
-    }
-
-    // ==========================================
-    // LIGHT-MODE FACEBOOK POST CARD (STANDARD)
-    // ==========================================
-    const bgGrad = ctx.createLinearGradient(0, 0, 1000, 1350);
-    bgGrad.addColorStop(0, '#f8fafc');
-    bgGrad.addColorStop(1, '#e2e8f0');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, 1000, 1350);
-
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
-    ctx.shadowBlur = 36;
-    ctx.shadowOffsetY = 14;
-    ctx.fillStyle = '#ffffff';
-    
-    const x = 40, y = 40, w = 920, h = 1270, r = 24;
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-
-    // Header: Avatar + Brand
-    const avatarX = 95, avatarY = 100, avatarR = 32;
-    ctx.fillStyle = '#0284c7';
-    ctx.beginPath();
-    ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 26px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('VT', avatarX, avatarY);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 30px sans-serif';
-    ctx.fillText('VĨNH TƯỜNG', 145, 92);
-
-    ctx.fillStyle = '#0284c7';
-    ctx.beginPath();
-    ctx.arc(340, 88, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('✓', 340, 89);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#64748b';
-    ctx.font = '500 20px sans-serif';
-    const dateText = item.airedDate ? `Ngày đăng: ${item.airedDate} • Facebook` : 'Bài viết Facebook chính thức';
-    ctx.fillText(dateText, 145, 122);
-
-    const pillarText = item.pillar ? item.pillar.toUpperCase() : 'BRANDING';
-    ctx.fillStyle = '#10B5A5';
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(730, 72, 200, 48, 24);
-    } else {
-      ctx.rect(730, 72, 200, 48);
-    }
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(pillarText, 830, 96);
-
-    ctx.strokeStyle = '#f1f5f9';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(80, 155);
-    ctx.lineTo(920, 155);
-    ctx.stroke();
-
-    // CAPTION TEXT (ALWAYS AT THE TOP!)
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#1e293b';
-    ctx.font = '500 26px/40px sans-serif';
-
-    const words = item.post.split(' ');
-    let line = '';
-    let currentY = 205;
-    const maxWidth = 840;
-    const lineHeight = 40;
-    let linesCount = 0;
-
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
-      const metrics = ctx.measureText(testLine);
-      if (metrics.width > maxWidth && n > 0) {
-        ctx.fillText(line, 80, currentY);
-        line = words[n] + ' ';
-        currentY += lineHeight;
-        linesCount++;
-        if (linesCount >= 6) {
-          line += '...';
-          break;
-        }
-      } else {
-        line = testLine;
-      }
-    }
-    ctx.fillText(line, 80, currentY);
-    currentY += 40;
-
-    if (item.productPillar) {
-      ctx.fillStyle = '#f8fafc';
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(80, currentY, 320, 42, 10);
-      } else {
-        ctx.rect(80, currentY, 320, 42);
-      }
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#334155';
-      ctx.font = 'bold 18px sans-serif';
-      ctx.fillText(`Dòng SP: ${item.productPillar.toUpperCase()}`, 95, currentY + 26);
-      currentY += 58;
-    }
-
-    // Media Box
-    const mediaHeight = Math.max(260, Math.min(440, 1100 - currentY));
-    const mediaY = currentY;
-
-    const mediaGrad = ctx.createLinearGradient(80, mediaY, 920, mediaY + mediaHeight);
-    mediaGrad.addColorStop(0, '#0f172a');
-    mediaGrad.addColorStop(1, '#1e293b');
-    ctx.fillStyle = mediaGrad;
-
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(80, mediaY, 840, mediaHeight, 16);
-    } else {
-      ctx.rect(80, mediaY, 840, mediaHeight);
-    }
-    ctx.fill();
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.beginPath();
-    ctx.arc(500, mediaY + mediaHeight / 2, 48, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(490, mediaY + mediaHeight / 2 - 22);
-    ctx.lineTo(522, mediaY + mediaHeight / 2);
-    ctx.lineTo(490, mediaY + mediaHeight / 2 + 22);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('HÌNH ẢNH / VIDEO BÀI VIẾT VĨNH TƯỜNG', 500, mediaY + mediaHeight / 2 + 85);
-
-    // METRICS FOOTER
-    const footerY = 1140;
-    
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(80, footerY);
-    ctx.lineTo(920, footerY);
-    ctx.stroke();
-
-    const reachVal = (item.reach || 0).toLocaleString('vi-VN');
-    ctx.fillStyle = '#eff6ff';
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(80, footerY + 20, 240, 50, 14);
-    } else {
-      ctx.rect(80, footerY + 20, 240, 50);
-    }
-    ctx.fill();
-    ctx.fillStyle = '#1d4ed8';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`👁️ Reach: ${reachVal}`, 95, footerY + 52);
-
-    const interactVal = (item.interact || 0).toLocaleString('vi-VN');
-    ctx.fillStyle = '#f0fdf4';
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(340, footerY + 20, 240, 50, 14);
-    } else {
-      ctx.rect(340, footerY + 20, 240, 50);
-    }
-    ctx.fill();
-    ctx.fillStyle = '#15803d';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText(`❤️ Tương tác: ${interactVal}`, 355, footerY + 52);
-
-    ctx.fillStyle = '#64748b';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('👍 Thích   💬 Bình luận   🔄 Chia sẻ', 920, footerY + 52);
-
-    return canvas.toDataURL('image/png');
-  };
-
-  // Generate 100% uniform Social Cards instantly for all posts in the pillar group
-  const generateAllUniformCards = async (posts: PostItem[], groupName: string) => {
-    if (!posts || posts.length === 0) {
-      setToastMessage('Bảng này hiện chưa có bài viết nào.');
-      setTimeout(() => setToastMessage(''), 3000);
-      return;
-    }
-
-    setToastMessage(`Đang tạo ngay ${posts.length} Thẻ Social Card đồng bộ 100%...`);
-    let count = 0;
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-
-    const newCapturesList: typeof capturedImages = [];
-
-    for (const p of posts) {
-      const cardUrl = generateClientSocialCard(p);
-      if (cardUrl) {
-        const postLink = p.link || (p.post && isUrl(p.post) ? (p.post.startsWith('http') ? p.post : `https://${p.post}`) : '');
-        const newCaptureId = Math.random().toString(36).substring(2, 9);
-        newCapturesList.push({
-          id: newCaptureId,
-          url: cardUrl,
-          timestamp: `${timeStr} - ${dateStr}`,
-          title: `Thẻ bài viết đồng bộ [${groupName}]: ${p.post.slice(0, 40)}${p.post.length > 40 ? '...' : ''}`,
-          type: 'LINK' as const,
-          targetUrl: postLink,
-          postTitle: p.post,
-          pillarName: groupName,
-        });
-        count++;
-      }
-    }
-
-    setCapturedImages(prev => {
-      const updated = [...newCapturesList, ...prev];
-      saveCapturesToIndexedDB(updated).catch(err => console.error(err));
-      return updated;
-    });
-
-    setToastMessage(`Thành công! Đã nạp ${count} Thẻ bài viết chuẩn đồng bộ vào Thư viện.`);
-    setTimeout(() => setToastMessage(''), 4000);
-  };
-
   const captureAllLinkScreenshots = async (posts: PostItem[], groupName: string) => {
     const links = posts
       .map(p => ({
@@ -901,18 +475,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       return;
     }
 
-    setToastMessage(`Đang chụp ảnh màn hình Web thực tế từ Facebook cho ${links.length} liên kết...`);
+    setToastMessage(`Đang bắt đầu chụp tuần tự từng link bài viết từ Facebook cho ${links.length} liên kết...`);
     let count = 0;
     
-    for (const item of links) {
+    // Strictly sequential loop - process 1 link at a time
+    for (let i = 0; i < links.length; i++) {
+      const item = links[i];
       try {
-        setToastMessage(`Đang chụp link (${count + 1}/${links.length}): ${item.post.slice(0, 30)}...`);
+        setToastMessage(`Đang chụp link (${i + 1}/${links.length}): ${item.post.slice(0, 30)}...`);
         setScreenshotLoading(prev => ({ ...prev, [item.url]: true }));
         
         let finalImage = '';
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout per link fetch to allow real Chrome Headless screenshots to complete
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s fast timeout per link
           const response = await fetch(`/api/screenshot?url=${encodeURIComponent(item.url)}&title=${encodeURIComponent(item.post)}`, { signal: controller.signal });
           clearTimeout(timeoutId);
           const data = await response.json();
@@ -920,7 +496,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             finalImage = await cropScreenshot(data.screenshotUrl);
           }
         } catch (e) {
-          console.warn(`Lỗi khi kết nối trình duyệt Headless Chrome cho link ${item.url}`);
+          console.warn(`Lỗi khi kết nối trình duyệt Headless Chrome cho link ${item.url}`, e);
         }
 
         if (finalImage) {
@@ -938,6 +514,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             targetUrl: item.url,
             postTitle: item.post,
             pillarName: groupName,
+            version: 'v4_full_photo_dynamic'
           };
           
           setCapturedImages(prev => {

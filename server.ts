@@ -768,10 +768,13 @@ app.get("/api/screenshot", async (req, res) => {
     const cleanUrl = originalUrl.replace(/\/\/(m|mobile|touch|da|developers)\.facebook\.com/i, '//www.facebook.com');
 
     const isFacebook = /facebook\.com|fb\.watch|fb\.com/i.test(cleanUrl);
-    const embedWidth = 600;
 
-    // Puppeteer screenshots the ORIGINAL URL (full real Facebook page view)
+    // For standard Facebook post permalinks, use official post embed URL to bypass guest login modals & cookie prompts natively.
+    // NOTE: Reels, Videos, and Watch URLs should be loaded directly as plugins/post.php does not support them.
     let targetUrl = cleanUrl;
+    if (isFacebook && !cleanUrl.includes('plugins/') && !cleanUrl.includes('/reel/') && !cleanUrl.includes('/videos/') && !cleanUrl.includes('/watch/')) {
+      targetUrl = `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(cleanUrl)}&width=750&show_text=true&locale=vi_VN`;
+    }
 
     // 0. Attempt 0: Real Headless Chrome Browser (Puppeteer/Selenium Engine)
     try {
@@ -780,18 +783,36 @@ app.get("/api/screenshot", async (req, res) => {
       
       const fs = await import('fs');
       let chromePath: string | undefined = undefined;
-      const possibleChromePaths = [
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/usr/bin/google-chrome',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/snap/bin/chromium'
-      ];
-      for (const p of possibleChromePaths) {
-        if (fs.existsSync(p)) {
-          chromePath = p;
-          break;
+
+      // Priority 1: Use Puppeteer's bundled Chrome for Testing (v25+ returns a Promise)
+      try {
+        const puppeteerPath = (puppeteer as any).executablePath
+          ? await Promise.resolve((puppeteer as any).executablePath())
+          : undefined;
+        if (typeof puppeteerPath === 'string' && fs.existsSync(puppeteerPath)) {
+          chromePath = puppeteerPath;
+          console.log(`[Screenshot API] Sử dụng Chrome của Puppeteer: ${chromePath}`);
+        }
+      } catch(e) {
+        console.warn('[Screenshot API] Không thể lấy executablePath từ Puppeteer:', (e as any).message);
+      }
+
+      // Priority 2: Fall back to system Chrome paths
+      if (!chromePath) {
+        const possibleChromePaths = [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/usr/bin/google-chrome',
+          '/usr/bin/google-chrome-stable',
+          '/usr/bin/chromium',
+          '/usr/bin/chromium-browser',
+          '/snap/bin/chromium'
+        ];
+        for (const p of possibleChromePaths) {
+          if (fs.existsSync(p)) {
+            chromePath = p;
+            console.log(`[Screenshot API] Sử dụng Chrome hệ thống: ${chromePath}`);
+            break;
+          }
         }
       }
 
@@ -811,52 +832,131 @@ app.get("/api/screenshot", async (req, res) => {
       };
       if (chromePath) {
         launchOpts.executablePath = chromePath;
-      } else {
-        try {
-          const defaultPath = (puppeteer as any).executablePath ? (puppeteer as any).executablePath() : undefined;
-          if (typeof defaultPath === 'string' && fs.existsSync(defaultPath)) {
-            launchOpts.executablePath = defaultPath;
-          }
-        } catch(e){}
       }
 
-      console.log(`[Screenshot API] [Hàng đợi 0 - Headless Chrome] Đang mở Chrome (${chromePath || 'Puppeteer default'}) chụp: ${targetUrl}`);
+      console.log(`[Screenshot API] [Hàng đợi 0 - Headless Chrome] Đang mở Chrome (${chromePath || 'auto-detect'}) chụp: ${targetUrl}`);
       const browser = await puppeteer.launch(launchOpts);
 
       try {
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
         await page.setExtraHTTPHeaders({ 'accept-language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7' });
-        await page.evaluateOnNewDocument(() => {
-          Object.defineProperty(navigator, 'webdriver', { get: () => false });
-          (window as any).chrome = { runtime: {} };
-        });
 
-        // 1280px wide viewport matches real desktop Facebook layout as requested by the user
-        await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1.5 });
+        // Auto-dismiss script injected before page document loads
+        await page.evaluateOnNewDocument(`
+          window.__name = function(fn) { return fn; };
+          globalThis.__name = function(fn) { return fn; };
+          try {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            window.chrome = { runtime: {} };
+
+            function purgeModals() {
+              try {
+                var closeBtns = Array.from(document.querySelectorAll('[aria-label="Đóng"], [aria-label="Close"], [aria-label="Thoát"], [aria-label="Tắt"], [aria-label="Lúc khác"], [aria-label="Dismiss"]'));
+                closeBtns.forEach(function(btn) {
+                  try {
+                    btn.click();
+                    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                  } catch(e){}
+                });
+
+                var dialogs = Array.from(document.querySelectorAll('div[role="dialog"], div[aria-label*="Facebook"]'));
+                dialogs.forEach(function(dialog) {
+                  var text = (dialog.textContent || '').toLowerCase();
+                  if (text.includes('xem thêm') || text.includes('đăng nhập') || text.includes('see more') || text.includes('log in') || text.includes('tạo tài khoản')) {
+                    var targetToRemove = dialog;
+                    var current = dialog;
+                    for (var i = 0; i < 6; i++) {
+                      if (current.parentElement && current.parentElement !== document.body && current.parentElement !== document.documentElement) {
+                        var style = window.getComputedStyle(current.parentElement);
+                        if (style.position === 'fixed' || style.position === 'absolute' || parseInt(style.zIndex || '0') >= 5) {
+                          targetToRemove = current.parentElement;
+                        }
+                        current = current.parentElement;
+                      }
+                    }
+                    targetToRemove.remove();
+                  }
+                });
+
+                var overlays = Array.from(document.querySelectorAll('div[style*="position: fixed"], div[style*="position:fixed"], div.x1n2onr6, div[role="banner"]'));
+                overlays.forEach(function(el) {
+                  var txt = (el.textContent || '').toLowerCase();
+                  var style = window.getComputedStyle(el);
+                  if (style.position === 'fixed' && (txt.includes('đăng nhập') || txt.includes('xem thêm') || txt.includes('log in') || el.querySelector('input[type="text"], input[type="password"]'))) {
+                    el.remove();
+                  }
+                });
+
+                if (document.body) {
+                  document.body.style.overflow = 'auto';
+                  document.body.style.position = 'relative';
+                }
+                if (document.documentElement) {
+                  document.documentElement.style.overflow = 'auto';
+                }
+              } catch(e){}
+            }
+
+            window.addEventListener('DOMContentLoaded', function() {
+              purgeModals();
+              var observer = new MutationObserver(function() { purgeModals(); });
+              if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true });
+              }
+              setInterval(purgeModals, 200);
+            });
+          } catch(e){}
+        `);
+
+        const viewportWidth = (isFacebook && !targetUrl.includes('plugins/')) ? 1280 : (isFacebook ? 780 : 1280);
+        // Height 1150px allows full post photo/banner to fit in screenshot without bottom cropping
+        await page.setViewport({ width: viewportWidth, height: 1150, deviceScaleFactor: 1.5 });
+
+        // Native Puppeteer Physical OS Mouse Clicker for Facebook 'X' Close Buttons
+        const clickCloseButtonsNatively = async () => {
+          try {
+            const closeHandles = await page.$$('[aria-label="Đóng"], [aria-label="Close"], [aria-label="Thoát"], [aria-label="Tắt"], [aria-label="Lúc khác"], [aria-label="Dismiss"]');
+            for (const handle of closeHandles) {
+              try {
+                const box = await handle.boundingBox();
+                if (box && box.width > 0 && box.height > 0) {
+                  console.log(`[Screenshot API] Phát hiện nút X tại [x: ${Math.round(box.x)}, y: ${Math.round(box.y)}]. Thực hiện click chuột phần cứng...`);
+                  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                  await new Promise(r => setTimeout(r, 300));
+                }
+              } catch(e){}
+            }
+          } catch(e){}
+        };
         
         try {
-          await page.goto(cleanUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
         } catch (gotoErr) {
-          console.warn(`[Screenshot API] domcontentloaded fallback cho: ${cleanUrl}`);
-          await page.goto(cleanUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          console.warn(`[Screenshot API] fallback networkidle2 cho: ${targetUrl}`);
+          try {
+            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 8000 });
+          } catch(e){}
         }
 
+        // Pass 1: Physical mouse click on close buttons immediately after page navigation
+        await clickCloseButtonsNatively();
+
         // Real-Human Automated Selenium Chrome Workflow:
-        // 1. Smooth human-like scrolling to trigger viewport observers & lazy-loaded media
-        await page.evaluate(async () => {
+        // 1. Fast smooth scrolling to trigger viewport observers & lazy-loaded media
+        await page.evaluate(`(async function() {
           try {
-            for (let y = 0; y <= 450; y += 45) {
+            for (var y = 0; y <= 400; y += 80) {
               window.scrollTo(0, y);
-              await new Promise(r => setTimeout(r, 40));
+              await new Promise(function(r) { setTimeout(r, 20); });
             }
-            await new Promise(r => setTimeout(r, 200));
             window.scrollTo(0, 0);
 
-            // Force load all lazy images inside container
-            const imgs = Array.from(document.querySelectorAll('img'));
-            imgs.forEach((img: any) => {
-              const lazySrc = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-srcset') || img.getAttribute('data-[#src]');
+            var imgs = Array.from(document.querySelectorAll('img'));
+            imgs.forEach(function(img) {
+              var lazySrc = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-srcset') || img.getAttribute('data-[#src]');
               if (lazySrc && (!img.src || img.src.includes('data:image') || img.naturalWidth === 0)) {
                 img.src = lazySrc.split(' ')[0];
               }
@@ -866,25 +966,21 @@ app.get("/api/screenshot", async (req, res) => {
             });
           } catch(e){}
 
-          // 2. Human-like automated clicks: Accept cookies, close popups, and expand 'Xem thêm' / 'See more'
           try {
-            const dismissSelectors = [
-              '[aria-label="Decline optional cookies"]',
-              '[aria-label="Allow all cookies"]',
-              '[aria-label="Accept all"]',
-              '[aria-label="Chấp nhận tất cả"]',
-              '[data-cookiebanner="accept_button"]',
-              '#cookie-use-link'
-            ];
-            dismissSelectors.forEach(sel => {
-              const btn = document.querySelector(sel);
-              if (btn) (btn as HTMLElement).click();
+            var closeBtns = Array.from(document.querySelectorAll('[aria-label="Đóng"], [aria-label="Close"], [aria-label="Thoát"], [aria-label="Tắt"], [aria-label="Lúc khác"], [aria-label="Dismiss"]'));
+            closeBtns.forEach(function(btn) {
+              try {
+                btn.click();
+                btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+              } catch(e){}
             });
 
-            // Ensure caption text is 100% visible, expanded, and styled crisply
-            const style = document.createElement('style');
-            style.textContent = `
-              ._5p1e, ._5ptz, ._1p1t, [data-testid="post_message"], [class*="userContent"], [class*="caption"] {
+            var style = document.createElement('style');
+            style.id = 'auto-dismiss-fb-modals';
+            style.textContent = \`
+              ._5p1e, ._5ptz, ._1p1t, [data-testid="post_message"], [class*="userContent"], [class*="caption"], div[dir="auto"] {
                 display: block !important;
                 visibility: visible !important;
                 opacity: 1 !important;
@@ -895,39 +991,104 @@ app.get("/api/screenshot", async (req, res) => {
                 color: #1c1e21 !important;
                 margin-bottom: 12px !important;
               }
-              body, html, #facebook, ._5p3y {
+              body, html, #facebook, ._5p3y, div[role="dialog"], div[role="dialog"] > div {
                 overflow: visible !important;
                 height: auto !important;
+                max-height: none !important;
               }
               img {
                 opacity: 1 !important;
                 visibility: visible !important;
+                max-height: none !important;
               }
-            `;
-            document.head.appendChild(style);
-
-            const captionEl = document.querySelector('._5p1e, ._5ptz, ._1p1t, [data-testid="post_message"], [class*="userContent"], [class*="caption"]');
-            const mediaEl = document.querySelector('._5cwb, ._1t4w, ._5qgq, [class*="media"], [class*="stage"], [class*="video"], [class*="photo"], [class*="image"]');
-            if (captionEl && mediaEl && mediaEl.parentNode) {
-              mediaEl.parentNode.insertBefore(captionEl, mediaEl);
+              div[role="dialog"]:has(input[type="text"]),
+              div[role="dialog"]:has(input[type="password"]),
+              div[role="dialog"]:has(form),
+              div[aria-label="Xem thêm trên Facebook"],
+              div[aria-label="See more on Facebook"],
+              #login_popup,
+              div[role="banner"] {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+              }
+            \`;
+            if (!document.getElementById('auto-dismiss-fb-modals')) {
+              document.head.appendChild(style);
             }
-          } catch(e){}
 
-          try {
-            document.querySelectorAll('span, div, a, button').forEach(el => {
-              const t = (el.textContent || "").trim().toLowerCase();
+            document.querySelectorAll('span, div, a, button').forEach(function(el) {
+              var t = (el.textContent || "").trim().toLowerCase();
               if ((t === 'xem thêm' || t === 'see more') && !el.querySelector('span, div')) {
-                (el as HTMLElement).click();
+                el.click();
               }
             });
           } catch(e){}
-        });
+        })()`);
 
-        // 3. Generous render wait to guarantee all post photos and video thumbnails finish loading
-        await new Promise(r => setTimeout(r, 4500));
+        // Pass 2: Physical mouse click pass after scroll
+        await clickCloseButtonsNatively();
 
-        // 3. Wait for media and text to render completely
-        await new Promise(r => setTimeout(r, 4000));
+        // Fast 800ms render wait
+        await new Promise(r => setTimeout(r, 800));
+
+        // Final safety pass: Physical mouse click & DOM purge right before taking screenshot
+        await clickCloseButtonsNatively();
+        await page.evaluate(`(function() {
+          try {
+            document.querySelectorAll('div[role="dialog"], div[aria-label*="Facebook"]').forEach(function(dialog) {
+              var txt = (dialog.textContent || '').toLowerCase();
+              if (txt.includes('xem thêm') || txt.includes('đăng nhập') || txt.includes('see more') || txt.includes('log in') || txt.includes('tạo tài khoản')) {
+                var targetToRemove = dialog;
+                var current = dialog;
+                for (var i = 0; i < 6; i++) {
+                  if (current.parentElement && current.parentElement !== document.body && current.parentElement !== document.documentElement) {
+                    var style = window.getComputedStyle(current.parentElement);
+                    if (style.position === 'fixed' || style.position === 'absolute' || parseInt(style.zIndex || '0') >= 5) {
+                      targetToRemove = current.parentElement;
+                    }
+                    current = current.parentElement;
+                  }
+                }
+                targetToRemove.remove();
+              }
+            });
+          } catch(e){}
+        })()`);
+
+        // 4. Dynamic Viewport Auto-Calculation: Measure exact height of original white post card to guarantee 100% un-cropped capture from top header to bottom edge of photo grid
+        try {
+          const layoutMetrics: any = await page.evaluate(`(function() {
+            var maxBottom = 1100;
+            var card = document.querySelector('div[role="dialog"], ._5p3y, [data-pagelet="FeedUnit"], ._4-eo');
+            if (card) {
+              var rect = card.getBoundingClientRect();
+              if (rect.bottom > 0) {
+                maxBottom = Math.max(maxBottom, rect.bottom + window.scrollY);
+              }
+            }
+
+            var imgs = Array.from(document.querySelectorAll('img[src*="fbcdn"], img[src*="scontent"], ._4-eo, ._5qgq, [class*="photo"], [class*="media"], [class*="stage"]'));
+            imgs.forEach(function(el) {
+              var rect = el.getBoundingClientRect();
+              if (rect.height > 50 && rect.bottom > 0) {
+                maxBottom = Math.max(maxBottom, rect.bottom + window.scrollY);
+              }
+            });
+
+            return { maxBottom: maxBottom };
+          })()`);
+
+          if (layoutMetrics && layoutMetrics.maxBottom > 950) {
+            const dynamicHeight = Math.min(2600, Math.ceil(layoutMetrics.maxBottom + 100));
+            console.log(`[Screenshot API] Mở rộng khung chụp theo chiều cao tự nhiên của khung bài viết gốc: ${dynamicHeight}px...`);
+            await page.setViewport({ width: viewportWidth, height: dynamicHeight, deviceScaleFactor: 1.5 });
+            await new Promise(r => setTimeout(r, 400));
+          }
+        } catch(e){}
+
+        await new Promise(r => setTimeout(r, 400));
 
         // Take a screenshot of the actual desktop Facebook post page
         const buffer = await page.screenshot({ type: 'png', fullPage: false });
@@ -972,7 +1133,6 @@ app.get("/api/screenshot", async (req, res) => {
         `&viewport.deviceScaleFactor=1.5`,
         `&wait=${mlWait}`,
         `&force=true`,
-        `&ttl=0`,
         `&_cb=${Date.now()}`
       ].join('');
 
@@ -1000,25 +1160,18 @@ app.get("/api/screenshot", async (req, res) => {
       console.warn(`[Screenshot API] Microlink thất bại:`, microlinkErr.message);
     }
 
-    // 2. Direct Fallback: Generate beautifully designed HD Social Card (fail-proof & instantaneous)
-    console.log(`[Screenshot API] Tạo hình ảnh mô phỏng HD Social Card cho: ${targetUrl}`);
-    // Proxy the image server-side to avoid Facebook CDN cross-origin blocks in SVG
-    const parsedImageBase64 = parsedImage ? await proxyImageToBase64(parsedImage) : '';
-    const svgContent = generateFallbackCard(targetUrl, postTitle, parsedImageBase64, parsedDesc, parsedSiteName);
-    const base64Svg = Buffer.from(svgContent).toString('base64');
-    
-    return res.json({
-      success: true,
-      screenshotUrl: `data:image/svg+xml;base64,${base64Svg}`
+    // 2. No real screenshot was captured — return error instead of generating a fake card
+    console.warn(`[Screenshot API] Không thể chụp ảnh thực cho: ${targetUrl}. Puppeteer và Microlink đều thất bại.`);
+    return res.status(502).json({
+      success: false,
+      error: 'Không thể chụp ảnh màn hình thực. Puppeteer (Headless Chrome) và Microlink đều không khả dụng. Vui lòng tải ảnh chụp thủ công.'
     });
 
   } catch (error: any) {
     console.error("Screenshot ultimate handler error:", error);
-    const svgContent = generateFallbackCard(req.query.url as string || '', req.query.title as string || '');
-    const base64Svg = Buffer.from(svgContent).toString('base64');
-    return res.json({ 
-      success: true,
-      screenshotUrl: `data:image/svg+xml;base64,${base64Svg}` 
+    return res.status(500).json({
+      success: false,
+      error: `Lỗi hệ thống khi chụp ảnh: ${error.message || 'Không xác định'}`
     });
   }
 });
