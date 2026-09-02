@@ -1505,56 +1505,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </tbody>
                   </table>
                 </div>
-
-                {/* Collapsible Extracted Links Section */}
-                <div className="mt-4 bg-slate-50/50 border border-slate-100 rounded-xl p-4">
-                  <details className="group">
-                    <summary className="list-none flex items-center justify-between font-semibold text-xs text-slate-600 cursor-pointer select-none">
-                      <span className="flex items-center gap-2">
-                        <ExternalLink className="w-4 h-4 text-indigo-500" />
-                        Danh sách Link Bài viết trích xuất ({group.posts.filter(p => p.link || isUrl(p.post)).length} link)
-                      </span>
-                      <span className="text-[10px] text-slate-400 group-open:rotate-180 transition-transform duration-200">▼</span>
-                    </summary>
-                    <div className="mt-3 space-y-2 max-h-48 overflow-y-auto pt-2 border-t border-slate-100">
-                      {group.posts.filter(p => p.link || isUrl(p.post)).map((post, idx) => {
-                        const linkUrl = post.link || (post.post.startsWith('http') ? post.post : `https://${post.post}`);
-                        return (
-                          <div key={idx} className="flex items-center justify-between text-xs py-1.5 hover:bg-slate-100/50 px-2 rounded transition-colors">
-                            <span className="text-slate-600 truncate max-w-[70%]" title={post.post}>
-                              {idx + 1}. {post.post}
-                            </span>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <a 
-                                href={linkUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-indigo-500 hover:text-indigo-600 font-semibold flex items-center gap-0.5"
-                              >
-                                Mở <ExternalLink className="w-3 h-3" />
-                              </a>
-                              <button 
-                                onClick={() => {
-                                  navigator.clipboard.writeText(linkUrl);
-                                  setToastMessage('Đã sao chép link bài viết!');
-                                  setTimeout(() => setToastMessage(''), 2000);
-                                }}
-                                className="text-teal-600 hover:text-teal-700 font-semibold cursor-pointer"
-                              >
-                                Sao chép
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {group.posts.filter(p => p.link || isUrl(p.post)).length === 0 && (
-                        <div className="text-center py-4 text-slate-400 text-xs">
-                          Không tìm thấy link bài viết nào trong bảng này.
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                </div>
               </div>
             ))}
         </div>
