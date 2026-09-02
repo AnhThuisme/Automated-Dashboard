@@ -396,7 +396,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       setToastMessage(`Đang mở trình duyệt Headless Chrome chụp bài viết cho: ${postTitle.slice(0, 30)}...`);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for complete render
       const response = await fetch(`/api/screenshot?url=${encodeURIComponent(cleanUrl)}&title=${encodeURIComponent(postTitle)}`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
@@ -449,11 +449,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           setToastMessage(`Đã chụp bài viết thành công và nạp vào Thư viện!`);
         }
       } else {
-        setToastMessage(`Không nhận được phản hồi ảnh từ máy chủ.`);
+        setToastMessage(`Không nhận được phản hồi ảnh từ máy chủ: ${data.error || 'Lỗi không xác định'}`);
       }
     } catch (err: any) {
       console.error('Lỗi khi chụp bài viết:', err);
-      const errMsg = err?.name === 'AbortError' ? 'Quá thời gian kết nối (timeout 35s)' : (err?.message || 'Lỗi kết nối máy chủ');
+      const errMsg = err?.name === 'AbortError' ? 'Quá thời gian kết nối (timeout 60s)' : (err?.message || 'Lỗi kết nối máy chủ');
       setToastMessage(`Chụp bài viết: ${errMsg}`);
     } finally {
       setScreenshotLoading(prev => ({ ...prev, [loadingKey]: false }));
@@ -488,14 +488,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         let finalImage = '';
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s fast timeout per link
+          const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout per link
           const response = await fetch(`/api/screenshot?url=${encodeURIComponent(item.url)}&title=${encodeURIComponent(item.post)}`, { signal: controller.signal });
           clearTimeout(timeoutId);
-          const data = await response.json();
-          if (data.success && data.screenshotUrl) {
-            finalImage = await cropScreenshot(data.screenshotUrl);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.screenshotUrl) {
+              finalImage = await cropScreenshot(data.screenshotUrl);
+            }
           }
-        } catch (e) {
+        } catch (e: any) {
           console.warn(`Lỗi khi kết nối trình duyệt Headless Chrome cho link ${item.url}`, e);
         }
 
