@@ -1394,36 +1394,54 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             
                             {/* Pillar Selector for manual check & override */}
                             <td className="text-center p-2">
-                              <select
-                                value={post.pillar || 'CHƯA PHÂN LOẠI'}
-                                onChange={(e) => onUpdatePostPillar && onUpdatePostPillar(post, e.target.value)}
-                                className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1.5 focus:border-[#10B5A5] focus:bg-white outline-none cursor-pointer hover:bg-slate-100/70 transition-all shadow-sm w-full"
-                              >
-                                <option value="PRODUCT">PRODUCT</option>
-                                <option value="PROMOTION">PROMOTION</option>
-                                <option value="MINIGAME">MINIGAME</option>
-                                <option value="BRANDING">BRANDING</option>
-                                <option value="CHƯA PHÂN LOẠI">N/A</option>
-                              </select>
+                              {isAdmin ? (
+                                <select
+                                  value={post.pillar || 'CHƯA PHÂN LOẠI'}
+                                  onChange={(e) => onUpdatePostPillar && onUpdatePostPillar(post, e.target.value)}
+                                  className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1.5 focus:border-[#10B5A5] focus:bg-white outline-none cursor-pointer hover:bg-slate-100/70 transition-all shadow-sm w-full"
+                                >
+                                  <option value="PRODUCT">PRODUCT</option>
+                                  <option value="PROMOTION">PROMOTION</option>
+                                  <option value="MINIGAME">MINIGAME</option>
+                                  <option value="BRANDING">BRANDING</option>
+                                  <option value="CHƯA PHÂN LOẠI">N/A</option>
+                                </select>
+                              ) : (
+                                <span 
+                                  className="inline-block text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100 border border-slate-200/80 rounded-lg px-2 py-1.5 text-center shadow-xs w-full select-none cursor-default"
+                                  title="Chỉ Quản trị viên (Admin) mới có quyền thay đổi Pillar"
+                                >
+                                  {post.pillar || 'CHƯA PHÂN LOẠI'}
+                                </span>
+                              )}
                             </td>
 
                             {/* Product Sub-pillar Selector for manual check & override */}
                             {group.pillar === 'PRODUCT' && (
                               <td className="text-center p-2">
-                                <select
-                                  value={post.productPillar || 'KHÁC'}
-                                  onChange={(e) => onUpdatePostProductPillar && onUpdatePostProductPillar(post, e.target.value)}
-                                  className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1.5 focus:border-[#10B5A5] focus:bg-white outline-none cursor-pointer hover:bg-slate-100/70 transition-all shadow-sm w-full"
-                                >
-                                  <option value="ÁNH KIM">ÁNH KIM</option>
-                                  <option value="KHUNG TITAN">KHUNG TITAN</option>
-                                  <option value="TẤM EUROTONE">TẤM EUROTONE</option>
-                                  <option value="TẤM SIÊU BẢO VỆ">TẤM SIÊU BẢO VỆ</option>
-                                  <option value="TẤM SIÊU CHỐNG MỐC">TẤM SIÊU CHỐNG MỐC</option>
-                                  <option value="TẤM SIÊU CHỐNG ẨM">TẤM SIÊU CHỐNG ẨM</option>
-                                  <option value="SIÊU CHỐNG CHÁY">SIÊU CHỐNG CHÁY</option>
-                                  <option value="KHÁC">KHÁC</option>
-                                </select>
+                                {isAdmin ? (
+                                  <select
+                                    value={post.productPillar || 'KHÁC'}
+                                    onChange={(e) => onUpdatePostProductPillar && onUpdatePostProductPillar(post, e.target.value)}
+                                    className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1.5 focus:border-[#10B5A5] focus:bg-white outline-none cursor-pointer hover:bg-slate-100/70 transition-all shadow-sm w-full"
+                                  >
+                                    <option value="ÁNH KIM">ÁNH KIM</option>
+                                    <option value="KHUNG TITAN">KHUNG TITAN</option>
+                                    <option value="TẤM EUROTONE">TẤM EUROTONE</option>
+                                    <option value="TẤM SIÊU BẢO VỆ">TẤM SIÊU BẢO VỆ</option>
+                                    <option value="TẤM SIÊU CHỐNG MỐC">TẤM SIÊU CHỐNG MỐC</option>
+                                    <option value="TẤM SIÊU CHỐNG ẨM">TẤM SIÊU CHỐNG ẨM</option>
+                                    <option value="SIÊU CHỐNG CHÁY">SIÊU CHỐNG CHÁY</option>
+                                    <option value="KHÁC">KHÁC</option>
+                                  </select>
+                                ) : (
+                                  <span 
+                                    className="inline-block text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100 border border-slate-200/80 rounded-lg px-2 py-1.5 text-center shadow-xs w-full select-none cursor-default"
+                                    title="Chỉ Quản trị viên (Admin) mới có quyền thay đổi Product Pillar"
+                                  >
+                                    {post.productPillar || 'KHÁC'}
+                                  </span>
+                                )}
                               </td>
                             )}
                             

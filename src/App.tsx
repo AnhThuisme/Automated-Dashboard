@@ -616,6 +616,7 @@ export default function App() {
 
   // Manual correction of a post's Content Pillar
   const handleUpdatePostPillar = (postToUpdate: PostItem, newPillar: string) => {
+    if (userRole !== 'ADMIN') return;
     const normalizedNewPillar = newPillar.trim().toUpperCase() || 'CHƯA PHÂN LOẠI';
     
     // Extract all posts across current groups
@@ -679,6 +680,7 @@ export default function App() {
 
   // Manual correction of a post's Product Sub-Pillar
   const handleUpdatePostProductPillar = (postToUpdate: PostItem, newProductPillar: string) => {
+    if (userRole !== 'ADMIN') return;
     const normalizedNewProductPillar = newProductPillar.trim().toUpperCase() || 'KHÁC';
     
     // Extract all posts across current groups
