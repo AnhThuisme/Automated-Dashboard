@@ -16,58 +16,25 @@ import {
   FileSpreadsheet, 
   Settings, 
   History, 
-  LogOut, 
   Sparkles, 
-  ChevronRight,
   Database,
-  User as UserIcon,
-  HelpCircle,
-  ShieldCheck,
-  Check,
-  ChevronDown,
-  UserCheck,
-  Crown,
-  Key
+  Crown
 } from 'lucide-react';
 
 export default function App() {
-  const [userRole, setUserRole] = useState<'ADMIN' | 'DEMO' | 'GOOGLE'>(() => {
-    return (localStorage.getItem('app_user_role') as any) || 'DEMO';
-  });
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
+  // Determine role from URL path: /admin = ADMIN, everything else = DEMO (Guest)
+  const isAdminPath = window.location.pathname.startsWith('/admin');
+  const userRole: 'ADMIN' | 'DEMO' = isAdminPath ? 'ADMIN' : 'DEMO';
 
-  const [accessToken, setAccessToken] = useState<string | null>('demo-mode-token');
+  const [accessToken, setAccessToken] = useState<string | null>(() => {
+    return isAdminPath ? 'admin-mode-token' : 'demo-mode-token';
+  });
   const [user, setUser] = useState<any | null>(() => {
-    const savedRole = localStorage.getItem('app_user_role');
-    if (savedRole === 'ADMIN') {
+    if (isAdminPath) {
       return { displayName: 'Quản trị viên (Admin)', email: 'admin@socialpillar.vn', role: 'ADMIN' };
     }
     return { displayName: 'Khách (Demo Mode)', email: 'demo@app.local', role: 'DEMO' };
   });
-
-  const handleSwitchRole = (role: 'ADMIN' | 'DEMO') => {
-    setUserRole(role);
-    localStorage.setItem('app_user_role', role);
-    if (role === 'ADMIN') {
-      setUser({
-        displayName: 'Quản trị viên (Admin)',
-        email: 'admin@socialpillar.vn',
-        role: 'ADMIN'
-      });
-      setAccessToken('admin-mode-token');
-      addLog('XÁC THỰC', 'Success', 'Đã chuyển sang phân quyền Quản trị viên (Admin).');
-    } else {
-      setUser({
-        displayName: 'Khách (Demo Mode)',
-        email: 'demo@app.local',
-        role: 'DEMO'
-      });
-      setAccessToken('demo-mode-token');
-      setActiveTab('dashboard');
-      addLog('XÁC THỰC', 'Success', 'Đã chuyển sang phân quyền Khách (Demo Mode).');
-    }
-    setShowRoleMenu(false);
-  };
   const [needsAuth, setNeedsAuth] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -75,8 +42,7 @@ export default function App() {
 
   // Active navigation tab (Default to 'dashboard' for Khách, 'config' for Admin)
   const [activeTab, setActiveTab] = useState<'config' | 'dashboard' | 'logs'>(() => {
-    const savedRole = localStorage.getItem('app_user_role');
-    return savedRole === 'ADMIN' ? 'config' : 'dashboard';
+    return isAdminPath ? 'config' : 'dashboard';
   });
 
   // Available sheets list inside selected Spreadsheet
@@ -853,106 +819,29 @@ export default function App() {
               )}
             </nav>
 
-            {/* User Status / Interactive Role Switcher Dropdown */}
-            <div className="relative flex items-center gap-2">
-              <button
-                onClick={() => setShowRoleMenu(!showRoleMenu)}
-                className="flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl py-1.5 px-3 text-left transition-all cursor-pointer shadow-sm group select-none"
-                title="Nhấp để chuyển đổi phân quyền Quản trị viên (Admin) hoặc Khách"
-              >
-                <div className={`w-7 h-7 font-bold rounded-lg flex items-center justify-center text-xs shadow-sm transition-transform group-hover:scale-105 ${
+            {/* User Role Badge */}
+            <div className="flex items-center">
+              {/* Current role badge */}
+              <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200/80 rounded-xl py-1.5 px-3 shadow-sm select-none">
+                <div className={`w-7 h-7 font-bold rounded-lg flex items-center justify-center text-xs shadow-sm ${
                   userRole === 'ADMIN' 
                     ? 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white' 
                     : 'bg-[#10B5A5] text-white'
                 }`}>
-                  {userRole === 'ADMIN' ? 'AD' : (user?.email ? user.email.slice(0, 2).toUpperCase() : 'DE')}
+                  {userRole === 'ADMIN' ? 'AD' : 'KH'}
                 </div>
-                <div className="min-w-0 pr-1">
+                <div className="min-w-0">
                   <div className="flex items-center gap-1">
                     {userRole === 'ADMIN' && <Crown className="w-3 h-3 text-amber-500 inline-block shrink-0" />}
                     <p className="text-[11px] font-bold text-slate-800 leading-none truncate max-w-[130px]">
-                      {userRole === 'ADMIN' ? 'Quản trị viên (Admin)' : (user?.displayName || 'Khách (Demo Mode)')}
+                      {userRole === 'ADMIN' ? 'Quản trị viên (Admin)' : 'Khách (Xem Dashboard)'}
                     </p>
                   </div>
                   <p className="text-[9px] text-slate-400 leading-none truncate max-w-[130px] font-mono mt-0.5">
-                    {userRole === 'ADMIN' ? 'admin@socialpillar.vn' : (user?.email || 'demo@app.local')}
+                    {userRole === 'ADMIN' ? 'admin@socialpillar.vn' : 'guest@socialpillar.vn'}
                   </p>
                 </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showRoleMenu ? 'rotate-180 text-teal-600' : ''}`} />
-              </button>
-
-              {/* Role Switcher Dropdown Popup Menu */}
-              {showRoleMenu && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowRoleMenu(false)}
-                  />
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/60 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-2 border-b border-slate-100 mb-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chọn Phân quyền Hệ thống</p>
-                    </div>
-
-                    {/* Admin Role Button */}
-                    <button
-                      onClick={() => handleSwitchRole('ADMIN')}
-                      className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left cursor-pointer ${
-                        userRole === 'ADMIN'
-                          ? 'bg-amber-50/80 border border-amber-200/60 text-amber-950 font-bold'
-                          : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-500 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
-                          AD
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            Quản trị viên (Admin)
-                            <Crown className="w-3 h-3 text-amber-500 inline-block" />
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-mono">admin@socialpillar.vn</p>
-                        </div>
-                      </div>
-                      {userRole === 'ADMIN' && <Check className="w-4 h-4 text-amber-600 shrink-0" />}
-                    </button>
-
-                    {/* Guest / Demo Role Button */}
-                    <button
-                      onClick={() => handleSwitchRole('DEMO')}
-                      className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left cursor-pointer mt-1 ${
-                        userRole === 'DEMO'
-                          ? 'bg-teal-50/80 border border-teal-200/60 text-teal-950 font-bold'
-                          : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-[#10B5A5] text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
-                          DE
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">Khách (Demo Mode)</p>
-                          <p className="text-[10px] text-slate-400 font-mono">demo@app.local</p>
-                        </div>
-                      </div>
-                      {userRole === 'DEMO' && <Check className="w-4 h-4 text-[#10B5A5] shrink-0" />}
-                    </button>
-
-                    <div className="border-t border-slate-100 my-1 pt-1">
-                      <button
-                        onClick={() => {
-                          setShowRoleMenu(false);
-                          setActiveTab('config');
-                        }}
-                        className="w-full flex items-center gap-2 p-2 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-teal-600 text-xs font-medium transition-all cursor-pointer"
-                      >
-                        <Key className="w-3.5 h-3.5 text-teal-500" />
-                        <span>Cấu hình Google Sheets / Auth...</span>
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
+              </div>
             </div>
 
           </div>
@@ -963,7 +852,7 @@ export default function App() {
           
           {/* Active tab router */}
           <div className="min-h-[500px]">
-            {activeTab === 'config' && (
+            {activeTab === 'config' && userRole === 'ADMIN' && (
               <ConfigTab 
                 accessToken={accessToken}
                 config={config}
@@ -983,7 +872,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'dashboard' && (
+            {(activeTab === 'dashboard' || userRole === 'DEMO') && (
               <DashboardTab 
                 groups={groups}
                 lastUpdated={lastUpdated}
@@ -993,13 +882,14 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'logs' && (
+            {activeTab === 'logs' && userRole === 'ADMIN' && (
               <LogsTab 
                 logs={logs}
                 onClearLogs={handleClearLogs}
               />
             )}
           </div>
+
 
         </main>
       </div>

@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { PillarGroup, PostItem } from '../types';
 import { FileSpreadsheet, ExternalLink, Flame, Eye, Sparkles, Camera, Download, Trash2, Loader2, Upload, RefreshCw, Plus, Image as ImageIcon, Maximize2, Minimize2, ZoomIn, ZoomOut, Pencil, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MonthlyPostBuzzChart } from './MonthlyPostBuzzChart';
 
 // Helper functions for IndexedDB storage of screenshot captures to bypass localStorage size limits (5MB)
 const getDB = (): Promise<IDBDatabase> => {
@@ -480,68 +481,65 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     setToastMessage(`Đang bắt đầu chụp tự động cho ${links.length} liên kết...`);
     let count = 0;
     
-    // Batch processing (2 concurrent links for optimal speed & server stability)
-    const concurrency = 2;
-    for (let i = 0; i < links.length; i += concurrency) {
-      const batch = links.slice(i, i + concurrency);
-      
-      await Promise.all(batch.map(async (item, batchIdx) => {
-        const globalIdx = i + batchIdx + 1;
+    // Process sequentially so Chrome instances do not conflict or cause timeouts
+    for (let i = 0; i < links.length; i++) {
+      const item = links[i];
+      const globalIdx = i + 1;
+      try {
+        setToastMessage(`Đang chụp (${globalIdx}/${links.length}): ${item.post.slice(0, 25)}... [Đã lưu: ${count}/${links.length}]`);
+        setScreenshotLoading(prev => ({ ...prev, [item.url]: true }));
+        
+        let finalImage = '';
         try {
-          setToastMessage(`Đang chụp (${globalIdx}/${links.length}): ${item.post.slice(0, 25)}... [Đã lưu: ${count} ảnh]`);
-          setScreenshotLoading(prev => ({ ...prev, [item.url]: true }));
-          
-          let finalImage = '';
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout per link
-            const response = await fetch(`/api/screenshot?url=${encodeURIComponent(item.url)}&title=${encodeURIComponent(item.post)}`, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (response.ok) {
-              const data = await response.json();
-              if (data.success && data.screenshotUrl) {
-                finalImage = await cropScreenshot(data.screenshotUrl);
-              }
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout per link
+          const response = await fetch(`/api/screenshot?url=${encodeURIComponent(item.url)}&title=${encodeURIComponent(item.post)}`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.screenshotUrl) {
+              finalImage = await cropScreenshot(data.screenshotUrl);
             }
-          } catch (e: any) {
-            console.warn(`Lỗi khi chụp link ${item.url}`, e);
           }
-
-          if (finalImage) {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-            
-            const newCaptureId = Math.random().toString(36).substring(2, 9);
-            const newCapture = {
-              id: newCaptureId,
-              url: finalImage,
-              timestamp: `${timeStr} - ${dateStr}`,
-              title: `Ảnh chụp bài viết [${groupName}]: ${item.post.slice(0, 40)}${item.post.length > 40 ? '...' : ''}`,
-              type: 'LINK' as const,
-              targetUrl: item.url,
-              postTitle: item.post,
-              pillarName: groupName,
-              version: 'v4_full_photo_dynamic'
-            };
-            
-            count++;
-            setCapturedImages(prev => {
-              const filtered = prev.filter(img => img.targetUrl !== item.url);
-              const updated = [newCapture, ...filtered];
-              saveCapturesToIndexedDB(updated).catch(err => console.error(err));
-              return updated;
-            });
-          }
-        } catch (err) {
-          console.error(`Lỗi khi xử lý link bài viết: ${item.url}`, err);
-        } finally {
-          setScreenshotLoading(prev => ({ ...prev, [item.url]: false }));
+        } catch (e: any) {
+          console.warn(`Lỗi khi chụp link ${item.url}`, e);
         }
-      }));
+
+        if (finalImage) {
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+          
+          const newCaptureId = Math.random().toString(36).substring(2, 9);
+          const newCapture = {
+            id: newCaptureId,
+            url: finalImage,
+            timestamp: `${timeStr} - ${dateStr}`,
+            title: `Ảnh chụp bài viết [${groupName}]: ${item.post.slice(0, 40)}${item.post.length > 40 ? '...' : ''}`,
+            type: 'LINK' as const,
+            targetUrl: item.url,
+            postTitle: item.post,
+            pillarName: groupName,
+            version: 'v4_full_photo_dynamic'
+          };
+          
+          count++;
+          setCapturedImages(prev => {
+            const filtered = prev.filter(img => img.targetUrl !== item.url);
+            const updated = [newCapture, ...filtered];
+            saveCapturesToIndexedDB(updated).catch(err => console.error(err));
+            return updated;
+          });
+          setToastMessage(`✓ Đã lưu (${count}/${links.length}): ${item.post.slice(0, 25)}...`);
+        }
+      } catch (err) {
+        console.error(`Lỗi khi xử lý link bài viết: ${item.url}`, err);
+      } finally {
+        setScreenshotLoading(prev => ({ ...prev, [item.url]: false }));
+      }
     }
     
-    setToastMessage(`Hoàn tất! Đã chụp thành công màn hình Web cho ${count}/${links.length} bài viết.`);
+    setToastMessage(`Hoàn tất! Đã chụp thành công ${count}/${links.length} bài viết.`);
     setTimeout(() => setToastMessage(''), 5000);
   };
 
@@ -1335,6 +1333,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </tbody>
             </table>
           </div>
+
+          {/* Monthly Post & Buzz Chart */}
+          <MonthlyPostBuzzChart posts={filteredGroups.flatMap(g => g.posts)} />
         </div>
       ) : (
         /* Render only the selected Pillar group's table */
@@ -1531,15 +1532,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </div>
       )}
 
-      {/* Captured Screenshots Gallery / Gallery Ảnh Chụp Màn Hình */}
-      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
-          <div className="flex items-center gap-2">
-            <h3 className="font-display font-bold text-slate-800 text-sm flex items-center gap-2 uppercase tracking-wide">
-              <Camera className="w-4 h-4 text-[#10B5A5]" />
-              Thư viện ảnh chụp minh chứng - {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab} ({filteredCapturedImages.length})
-            </h3>
-          </div>
+      {/* Captured Screenshots Gallery / Gallery Ảnh Chụp Màn Hình (Chỉ hiển thị cho các Pillar, ẩn khi ở tab Bảng tổng thể / OVERVIEW) */}
+      {currentActiveTab !== 'OVERVIEW' && (
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
+            <div className="flex items-center gap-2">
+              <h3 className="font-display font-bold text-slate-800 text-sm flex items-center gap-2 uppercase tracking-wide">
+                <Camera className="w-4 h-4 text-[#10B5A5]" />
+                Thư viện ảnh chụp minh chứng - {currentActiveTab} ({filteredCapturedImages.length})
+              </h3>
+            </div>
           
           <div className="flex items-center justify-end gap-3 shrink-0">
             {filteredCapturedImages.length > 0 && (
@@ -1563,17 +1565,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {isAdmin && (
                   <button
                     onClick={() => {
-                      const updated = capturedImages.filter(img => {
-                        if (currentActiveTab === 'OVERVIEW') {
-                          return img.pillarName !== 'OVERVIEW' && img.pillarName && !img.title.toLowerCase().includes('tổng quan');
-                        }
-                        return img.pillarName !== currentActiveTab;
-                      });
+                      const updated = capturedImages.filter(img => img.pillarName !== currentActiveTab);
                       saveCaptures(updated);
                     }}
                     className="text-xs text-rose-500 hover:text-rose-600 font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Xoá tất cả {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}
+                    <Trash2 className="w-3.5 h-3.5" /> Xoá tất cả {currentActiveTab}
                   </button>
                 )}
               </>
@@ -1613,7 +1610,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 Hệ thống hỗ trợ chụp tự động, tuy nhiên nếu ảnh chụp bị mờ hoặc bị chặn bởi đăng nhập Facebook, bạn có thể **Kéo & Thả ảnh chụp màn hình của bạn vào đây** hoặc click để chọn tải ảnh lên thủ công.
               </p>
               <div className="mt-4 px-4 py-2 bg-[#10B5A5] text-white font-semibold text-xs rounded-lg shadow-sm hover:bg-teal-600 transition-all">
-                Tải ảnh lên cho {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}
+                Tải ảnh lên cho {currentActiveTab}
               </div>
             </div>
           ) : (
@@ -1651,7 +1648,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   onChange={handleFileChange}
                 />
                 <Upload className="w-5 h-5 text-slate-400 mb-1.5" />
-                <p className="text-[10px] font-bold text-slate-600">Thêm ảnh cho {currentActiveTab === 'OVERVIEW' ? 'Tổng quan' : currentActiveTab}</p>
+                <p className="text-[10px] font-bold text-slate-600">Thêm ảnh cho {currentActiveTab}</p>
               </div>
             )}
 
@@ -1930,6 +1927,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Toast Message HUD Overlay */}
       {toastMessage && (

@@ -1234,10 +1234,10 @@ app.get("/api/screenshot", async (req, res) => {
     }
 
     // 4. No screenshot or image could be retrieved
-    console.warn(`[Screenshot API] Không thể chụp ảnh thực cho: ${targetUrl}. Tất cả hàng đợi đều thất bại.`);
+    console.warn(`[Screenshot API] Không thể chụp ảnh thực cho: ${targetUrl}. Tất cả các phương thức chụp thực đều thất bại.`);
     return res.status(502).json({
       success: false,
-      error: 'Không thể chụp ảnh màn hình tự động cho link này do trang web chặn truy cập. Vui lòng kéo thả hoặc tải ảnh chụp thủ công.'
+      error: 'Không thể chụp ảnh màn hình tự động cho link này. Vui lòng tải ảnh lên thủ công.'
     });
 
   } catch (error: any) {
