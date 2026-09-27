@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { PillarGroup, PostItem } from '../types';
+import { PillarGroup, PostItem, KpiConfig } from '../types';
 import { FileSpreadsheet, ExternalLink, Flame, Eye, Sparkles, Camera, Download, Trash2, Loader2, Upload, RefreshCw, Plus, Image as ImageIcon, Maximize2, Minimize2, ZoomIn, ZoomOut, Pencil, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MonthlyPostBuzzChart } from './MonthlyPostBuzzChart';
 
@@ -56,6 +56,8 @@ interface DashboardTabProps {
   onUpdatePostPillar?: (post: PostItem, newPillar: string) => void;
   onUpdatePostProductPillar?: (post: PostItem, newProductPillar: string) => void;
   isAdmin?: boolean;
+  kpiConfig?: KpiConfig;
+  onNavigateToConfig?: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({ 
@@ -63,7 +65,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   lastUpdated, 
   onUpdatePostPillar,
   onUpdatePostProductPillar,
-  isAdmin = false
+  isAdmin = false,
+  kpiConfig,
+  onNavigateToConfig,
 }) => {
   const [activeTab, setActiveTab] = useState<string>('OVERVIEW');
   const currentActiveTab = (activeTab === 'OVERVIEW' || groups.some(g => g.pillar === activeTab)) ? activeTab : 'OVERVIEW';
@@ -1335,7 +1339,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
 
           {/* Monthly Post & Buzz Chart */}
-          <MonthlyPostBuzzChart posts={filteredGroups.flatMap(g => g.posts)} />
+          <MonthlyPostBuzzChart 
+            posts={filteredGroups.flatMap(g => g.posts)} 
+            kpiConfig={kpiConfig}
+            isAdmin={isAdmin}
+            onNavigateToConfig={onNavigateToConfig}
+          />
         </div>
       ) : (
         /* Render only the selected Pillar group's table */

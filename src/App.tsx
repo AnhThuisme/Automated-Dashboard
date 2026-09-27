@@ -11,7 +11,7 @@ import { LogsTab } from './components/LogsTab';
 import { initAuth, googleSignOut } from './firebase';
 import { fetchSheetData, writeDashboardToGoogleSheet, insertSampleDataToSheet } from './googleSheets';
 import { classifyByRules, classifyWithAI } from './utils';
-import { ConfigSettings, PillarGroup, LogEntry, PostItem } from './types';
+import { ConfigSettings, PillarGroup, LogEntry, PostItem, KpiConfig } from './types';
 import { 
   FileSpreadsheet, 
   Settings, 
@@ -127,6 +127,36 @@ export default function App() {
       console.error('Failed to save config:', e);
     }
   }, [config]);
+
+  // KPI Settings state with persistent storage
+  const [kpiConfig, setKpiConfig] = useState<KpiConfig>(() => {
+    try {
+      const cached = localStorage.getItem('social_pillar_kpi_config_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          mode: parsed.mode === 'month' ? 'month' : 'year',
+          selectedYear: parsed.selectedYear || new Date().getFullYear().toString(),
+          yearlyKpi: typeof parsed.yearlyKpi === 'number' ? parsed.yearlyKpi : 0,
+          monthlyKpis: parsed.monthlyKpis || {},
+        };
+      }
+    } catch {}
+    return {
+      mode: 'year',
+      selectedYear: new Date().getFullYear().toString(),
+      yearlyKpi: 0,
+      monthlyKpis: {},
+    };
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('social_pillar_kpi_config_v1', JSON.stringify(kpiConfig));
+    } catch (e) {
+      console.error('Failed to save KPI config:', e);
+    }
+  }, [kpiConfig]);
 
   // Generated Dashboard groups
   const [groups, setGroups] = useState<PillarGroup[]>([]);
@@ -857,6 +887,8 @@ export default function App() {
                 accessToken={accessToken}
                 config={config}
                 setConfig={setConfig}
+                kpiConfig={kpiConfig}
+                setKpiConfig={setKpiConfig}
                 onRefreshDashboard={handleRefreshDashboard}
                 onClearDashboard={handleClearDashboard}
                 onSyncToSheets={handleSyncToSheets}
@@ -879,6 +911,8 @@ export default function App() {
                 onUpdatePostPillar={handleUpdatePostPillar}
                 onUpdatePostProductPillar={handleUpdatePostProductPillar}
                 isAdmin={userRole === 'ADMIN'}
+                kpiConfig={kpiConfig}
+                onNavigateToConfig={() => setActiveTab('config')}
               />
             )}
 

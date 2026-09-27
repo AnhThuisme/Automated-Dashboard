@@ -40,3 +40,10 @@ export interface PillarGroup {
   pillar: string;
   posts: PostItem[];
 }
+
+export interface KpiConfig {
+  mode: 'year' | 'month';
+  selectedYear: string;
+  yearlyKpi: number;
+  monthlyKpis: Record<string, number>;
+}
