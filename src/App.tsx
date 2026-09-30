@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AuthOverlay } from './components/AuthOverlay';
 import { ConfigTab } from './components/ConfigTab';
 import { DashboardTab } from './components/DashboardTab';
@@ -12,6 +12,7 @@ import { initAuth, googleSignOut } from './firebase';
 import { fetchSheetData, writeDashboardToGoogleSheet, insertSampleDataToSheet } from './googleSheets';
 import { classifyByRules, classifyWithAI } from './utils';
 import { ConfigSettings, PillarGroup, LogEntry, PostItem, KpiConfig } from './types';
+import { loadSyncState, saveSyncState, startSyncPolling, SyncState } from './serverSync';
 import { 
   FileSpreadsheet, 
   Settings, 
@@ -39,6 +40,9 @@ export default function App() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Timestamp of the last sync push to server (to detect newer remote state)
+  const syncSavedAtRef = useRef<number>(0);
 
   // Active navigation tab (Default to 'dashboard' for Khách, 'config' for Admin)
   const [activeTab, setActiveTab] = useState<'config' | 'dashboard' | 'logs'>(() => {
@@ -229,7 +233,7 @@ export default function App() {
     }
   }, []);
 
-  // Save cache of groups when changed
+  // Save cache of groups when changed + push to server sync
   useEffect(() => {
     if (groups.length > 0) {
       try {
@@ -238,8 +242,120 @@ export default function App() {
       } catch (e) {
         console.error('Failed to cache dashboard:', e);
       }
+      // Push all relevant state to server for cross-tab/incognito sync
+      const payload: SyncState = {
+        config: config as unknown as Record<string, unknown>,
+        sheetsList,
+        kpiConfig: kpiConfig as unknown as Record<string, unknown>,
+        groups: groups as unknown[],
+        lastUpdated,
+        _savedAt: Date.now(),
+      };
+      saveSyncState(payload).then(ok => {
+        if (ok) syncSavedAtRef.current = payload._savedAt!;
+      });
     }
   }, [groups, lastUpdated]);
+
+  // Startup: load from server sync if this is incognito / fresh session
+  useEffect(() => {
+    loadSyncState().then(state => {
+      if (!state) return;
+      if (state._savedAt) syncSavedAtRef.current = state._savedAt;
+
+      if (state.groups && Array.isArray(state.groups) && state.groups.length > 0) {
+        const subPillars = ['ÁNH KIM', 'KHUNG TITAN', 'TẤM EUROTONE', 'TẤM SIÊU BẢO VỆ', 'TẤM SIÊU CHỐNG MỐC', 'TẤM SIÊU CHỐNG ẨM', 'SIÊU CHỐNG CHÁY', 'KHÁC'];
+        const parsedGroups = state.groups as PillarGroup[];
+        const normalizedGroupsMap = new Map<string, PostItem[]>();
+        parsedGroups.forEach(g => {
+          let targetPillar = (g.pillar || '').trim().toUpperCase();
+          if (subPillars.includes(targetPillar)) targetPillar = 'PRODUCT';
+          if (!normalizedGroupsMap.has(targetPillar)) normalizedGroupsMap.set(targetPillar, []);
+          if (Array.isArray(g.posts)) g.posts.forEach(p => normalizedGroupsMap.get(targetPillar)!.push({ ...p, pillar: targetPillar }));
+        });
+        const collapsedGroups: PillarGroup[] = [];
+        normalizedGroupsMap.forEach((posts, pillar) => collapsedGroups.push({ pillar, posts }));
+        collapsedGroups.sort((a, b) => a.pillar.localeCompare(b.pillar));
+        setGroups(prev => prev.length === 0 ? collapsedGroups : prev);
+      }
+      if (state.lastUpdated) setLastUpdated(prev => prev || state.lastUpdated!);
+      if (state.config) {
+        const c = state.config as any;
+        setConfig(prev => {
+          if (prev.spreadsheetId === 'demo-sheet-2026') {
+            return {
+              spreadsheetId: c.spreadsheetId || prev.spreadsheetId,
+              sourceSheetName: c.sourceSheetName || prev.sourceSheetName,
+              startDate: c.startDate ?? prev.startDate,
+              endDate: c.endDate ?? prev.endDate,
+              sortBy: c.sortBy || prev.sortBy,
+              sortOrder: c.sortOrder || prev.sortOrder,
+              maxPostsPerPillar: c.maxPostsPerPillar ?? prev.maxPostsPerPillar,
+              unlimitedPosts: c.unlimitedPosts ?? prev.unlimitedPosts,
+              includeEmptyPillar: c.includeEmptyPillar ?? prev.includeEmptyPillar,
+              classifyMode: c.classifyMode || prev.classifyMode,
+              productKeywords: c.productKeywords || prev.productKeywords,
+              promotionKeywords: c.promotionKeywords || prev.promotionKeywords,
+              minigameKeywords: c.minigameKeywords || prev.minigameKeywords,
+            };
+          }
+          return prev;
+        });
+      }
+      if (state.kpiConfig) {
+        const k = state.kpiConfig as any;
+        setKpiConfig(prev => prev.yearlyKpi === 0 && prev.monthlyKpis && Object.keys(prev.monthlyKpis).length === 0
+          ? { mode: k.mode || prev.mode, selectedYear: k.selectedYear || prev.selectedYear, yearlyKpi: k.yearlyKpi ?? prev.yearlyKpi, monthlyKpis: k.monthlyKpis || prev.monthlyKpis }
+          : prev
+        );
+      }
+      if (state.sheetsList && Array.isArray(state.sheetsList)) {
+        setSheetsList(prev => prev.length <= 10 ? state.sheetsList! : prev);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll server sync every 3s to receive updates from other tabs/browsers
+  useEffect(() => {
+    const stopPolling = startSyncPolling(
+      () => syncSavedAtRef.current,
+      (state: SyncState) => {
+        console.log('[Sync] Nhận dữ liệu mới từ server:', new Date(state._savedAt!).toLocaleTimeString());
+        if (state._savedAt) syncSavedAtRef.current = state._savedAt;
+        if (state.groups && Array.isArray(state.groups)) {
+          const subPillars = ['ÁNH KIM', 'KHUNG TITAN', 'TẤM EUROTONE', 'TẤM SIÊU BẢO VỆ', 'TẤM SIÊU CHỐNG MỐC', 'TẤM SIÊU CHỐNG ẨM', 'SIÊU CHỐNG CHÁY', 'KHÁC'];
+          const parsedGroups = state.groups as PillarGroup[];
+          const normalizedGroupsMap = new Map<string, PostItem[]>();
+          parsedGroups.forEach(g => {
+            let targetPillar = (g.pillar || '').trim().toUpperCase();
+            if (subPillars.includes(targetPillar)) targetPillar = 'PRODUCT';
+            if (!normalizedGroupsMap.has(targetPillar)) normalizedGroupsMap.set(targetPillar, []);
+            if (Array.isArray(g.posts)) g.posts.forEach(p => normalizedGroupsMap.get(targetPillar)!.push({ ...p, pillar: targetPillar }));
+          });
+          const collapsedGroups: PillarGroup[] = [];
+          normalizedGroupsMap.forEach((posts, pillar) => collapsedGroups.push({ pillar, posts }));
+          collapsedGroups.sort((a, b) => a.pillar.localeCompare(b.pillar));
+          setGroups(collapsedGroups);
+        }
+        if (state.lastUpdated) setLastUpdated(state.lastUpdated);
+        if (state.config) {
+          const c = state.config as any;
+          setConfig(prev => ({
+            ...prev,
+            spreadsheetId: c.spreadsheetId || prev.spreadsheetId,
+            sourceSheetName: c.sourceSheetName || prev.sourceSheetName,
+          }));
+        }
+        if (state.kpiConfig) {
+          const k = state.kpiConfig as any;
+          setKpiConfig({ mode: k.mode, selectedYear: k.selectedYear, yearlyKpi: k.yearlyKpi, monthlyKpis: k.monthlyKpis || {} });
+        }
+        if (state.sheetsList) setSheetsList(state.sheetsList);
+      }
+    );
+    return stopPolling;
+  }, []);
 
   // Initialize auth listener (optional Google Login)
   useEffect(() => {

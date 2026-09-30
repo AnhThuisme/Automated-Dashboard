@@ -5,9 +5,14 @@
 
 import express from "express";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -92,6 +97,42 @@ async function callGeminiWithModelFallback(ai: GoogleGenAI, baseParams: any, max
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+const cacheDir = path.resolve(__dirname, ".cache");
+const syncStateFile = path.resolve(cacheDir, "sync-state.json");
+
+// Endpoint to get shared/synchronized state across browser tabs & incognito
+app.get("/api/sync-state", (req, res) => {
+  try {
+    if (fs.existsSync(syncStateFile)) {
+      const data = fs.readFileSync(syncStateFile, "utf-8");
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      return res.send(data);
+    }
+  } catch (err: any) {
+    console.error("[Sync API Error reading state]:", err);
+  }
+  return res.json({ exists: false });
+});
+
+// Endpoint to update shared/synchronized state
+app.post("/api/sync-state", (req, res) => {
+  try {
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+    const payload = req.body;
+    if (!payload || typeof payload !== "object") {
+      return res.status(400).json({ error: "Dữ liệu payload không hợp lệ" });
+    }
+    fs.writeFileSync(syncStateFile, JSON.stringify(payload, null, 2), "utf-8");
+    return res.json({ success: true, timestamp: Date.now() });
+  } catch (err: any) {
+    console.error("[Sync API Error saving state]:", err);
+    return res.status(500).json({ error: err.message || "Lỗi lưu trạng thái đồng bộ" });
+  }
 });
 
 // Endpoint to fetch public Google Sheets CSV data without requiring OAuth login
