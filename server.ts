@@ -6,13 +6,12 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Works in both ESM (dev via tsx) and CJS (production build via esbuild)
+const rootDir = process.cwd();
 
 dotenv.config();
 
@@ -99,7 +98,7 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-const cacheDir = path.resolve(__dirname, ".cache");
+const cacheDir = path.resolve(rootDir, ".cache");
 const syncStateFile = path.resolve(cacheDir, "sync-state.json");
 
 // Endpoint to get shared/synchronized state across browser tabs & incognito
