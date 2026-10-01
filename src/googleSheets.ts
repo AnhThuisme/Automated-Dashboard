@@ -12,6 +12,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-01',
     reach: 14500,
     interact: 920,
+    buzz: 380,
     link: 'https://facebook.com/vinhtuong/posts/101',
   },
   {
@@ -20,6 +21,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-03',
     reach: 18200,
     interact: 1100,
+    buzz: 450,
     link: 'https://facebook.com/vinhtuong/posts/102',
   },
   {
@@ -29,6 +31,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-05',
     reach: 22800,
     interact: 1640,
+    buzz: 680,
     link: 'https://facebook.com/vinhtuong/posts/103',
   },
   {
@@ -38,6 +41,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-10',
     reach: 26500,
     interact: 1890,
+    buzz: 790,
     link: 'https://facebook.com/vinhtuong/posts/104',
   },
   {
@@ -47,6 +51,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-12',
     reach: 21000,
     interact: 1450,
+    buzz: 610,
     link: 'https://facebook.com/vinhtuong/posts/105',
   },
   {
@@ -55,6 +60,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-15',
     reach: 38200,
     interact: 3120,
+    buzz: 1380,
     link: 'https://facebook.com/vinhtuong/posts/106',
   },
   {
@@ -63,6 +69,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-18',
     reach: 29400,
     interact: 2300,
+    buzz: 960,
     link: 'https://facebook.com/vinhtuong/posts/107',
   },
   {
@@ -71,6 +78,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-20',
     reach: 31500,
     interact: 4250,
+    buzz: 2100,
     link: 'https://facebook.com/vinhtuong/posts/108',
   },
   {
@@ -79,6 +87,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-22',
     reach: 28900,
     interact: 3890,
+    buzz: 1750,
     link: 'https://facebook.com/vinhtuong/posts/109',
   },
   {
@@ -87,6 +96,7 @@ const DEMO_POSTS: PostItem[] = [
     airedDate: '2026-03-25',
     reach: 16700,
     interact: 840,
+    buzz: 340,
     link: 'https://facebook.com/vinhtuong/posts/110',
   }
 ];
@@ -422,11 +432,18 @@ export function parseRawPastedData(rawText: string): FetchSheetDataResult {
     };
 
     let interactVal = parseNum(rawInteract);
-    if (interactVal === 0 && (likesIdx !== -1 || commentsIdx !== -1 || sharesIdx !== -1)) {
+    let buzzVal = 0;
+    if (likesIdx !== -1 || commentsIdx !== -1 || sharesIdx !== -1) {
       const l = likesIdx !== -1 ? parseNum(row[likesIdx]) : 0;
       const c = commentsIdx !== -1 ? parseNum(row[commentsIdx]) : 0;
       const s = sharesIdx !== -1 ? parseNum(row[sharesIdx]) : 0;
-      interactVal = l + c + s;
+      // If interact column is missing, derive it from l+c+s
+      if (interactVal === 0) interactVal = l + c + s;
+      // Buzz = comment + share only (not likes)
+      buzzVal = c + s;
+    } else {
+      // No individual columns - fallback: buzz = interact
+      buzzVal = interactVal;
     }
 
     let postLink = linkIdx !== -1 && row[linkIdx] ? row[linkIdx].trim() : undefined;
@@ -446,6 +463,7 @@ export function parseRawPastedData(rawText: string): FetchSheetDataResult {
       airedDate: parseAndFormatDate(rawAiredDate),
       reach: parseNum(rawReach),
       interact: interactVal,
+      buzz: buzzVal,
       link: postLink,
     });
   }
@@ -853,6 +871,23 @@ export async function fetchSheetData(
     const reach = parseNumber(rawReach);
     const interact = parseNumber(rawInteract);
 
+    // Detect likes/comments/shares individual columns (second parse path)
+    const colHeaders2 = headers.map(h => h.toLowerCase());
+    const likesIdx2 = colHeaders2.findIndex(h => h === 'likes' || h === 'like' || h === 'lượt thích' || h === 'reactions');
+    const commentsIdx2 = colHeaders2.findIndex(h => h === 'comments' || h === 'comment' || h === 'bình luận' || h === 'cmt');
+    const sharesIdx2 = colHeaders2.findIndex(h => h === 'shares' || h === 'share' || h === 'chia sẻ');
+
+    let buzz: number;
+    const hasIndividual = likesIdx2 !== -1 || commentsIdx2 !== -1 || sharesIdx2 !== -1;
+    if (hasIndividual) {
+      const c = commentsIdx2 !== -1 && row[commentsIdx2] !== undefined ? parseNumber(row[commentsIdx2]) : 0;
+      const s = sharesIdx2 !== -1 && row[sharesIdx2] !== undefined ? parseNumber(row[sharesIdx2]) : 0;
+      buzz = c + s;
+    } else {
+      // Fallback: no individual columns → buzz = interact
+      buzz = interact;
+    }
+
     // Extract link if any
     let postLink = '';
     if (linkIdx !== -1) {
@@ -893,6 +928,7 @@ export async function fetchSheetData(
       airedDate,
       reach,
       interact,
+      buzz,
       link: postLink || undefined,
     });
   }
@@ -936,6 +972,7 @@ export async function insertSampleDataToSheet(
       airedDate: '2026-03-01',
       reach: 14500,
       interact: 920,
+      buzz: 380,
       link: 'https://facebook.com/vinhtuong/posts/101',
       title: 'Tổ ấm bền đẹp cùng Vĩnh Tường'
     },
@@ -946,6 +983,7 @@ export async function insertSampleDataToSheet(
       airedDate: '2026-03-05',
       reach: 22800,
       interact: 1640,
+      buzz: 680,
       link: 'https://facebook.com/vinhtuong/posts/102',
       title: 'Khung Vĩnh Tường TITAN siêu bền'
     },
@@ -956,6 +994,7 @@ export async function insertSampleDataToSheet(
       airedDate: '2026-03-10',
       reach: 26500,
       interact: 1890,
+      buzz: 790,
       link: 'https://facebook.com/vinhtuong/posts/103',
       title: 'Tấm Siêu Chống Mốc Vĩnh Tường'
     },
@@ -965,6 +1004,7 @@ export async function insertSampleDataToSheet(
       airedDate: '2026-03-15',
       reach: 38200,
       interact: 3120,
+      buzz: 1380,
       link: 'https://facebook.com/vinhtuong/posts/104',
       title: 'Khuyến mãi đặc biệt Vĩnh Tường'
     },
@@ -974,6 +1014,7 @@ export async function insertSampleDataToSheet(
       airedDate: '2026-03-20',
       reach: 31500,
       interact: 4250,
+      buzz: 2100,
       link: 'https://facebook.com/vinhtuong/posts/105',
       title: 'Minigame Đuổi hình bắt chữ nhận quà'
     }

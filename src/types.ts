@@ -9,9 +9,11 @@ export interface PostItem {
   post: string;
   airedDate: string; // yyyy-mm-dd
   reach: number;
-  interact: number;
+  interact: number; // like + comment + share (total engagement)
+  buzz: number;     // comment + share only (buzz = viral signal)
   link?: string;
 }
+
 
 export interface ConfigSettings {
   spreadsheetId: string;

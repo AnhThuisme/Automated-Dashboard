@@ -74,7 +74,7 @@ export const MonthlyPostBuzzChart: React.FC<MonthlyPostBuzzChartProps> = ({
 
       const entry = map.get(key)!;
       entry.postCount += 1;
-      entry.totalBuzz += post.interact || 0;
+      entry.totalBuzz += (post.buzz ?? post.interact) || 0;
     });
 
     return Array.from(map.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
