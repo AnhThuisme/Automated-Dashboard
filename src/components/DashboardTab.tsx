@@ -1061,18 +1061,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const totalPillars = filteredGroups.filter(g => g.posts.length > 0).length;
   const totalPosts = filteredGroups.reduce((sum, g) => sum + g.posts.length, 0);
   
-  // Find top posts
-  let topInteractPost: PostItem | null = null;
-  let topReachPost: PostItem | null = null;
+  // Tổng tương tác và tổng lượt tiếp cận (sum toàn bộ bài)
+  let totalInteract = 0;
+  let totalReach = 0;
 
   filteredGroups.forEach(g => {
     g.posts.forEach(p => {
-      if (!topInteractPost || p.interact > topInteractPost.interact) {
-        topInteractPost = p;
-      }
-      if (!topReachPost || p.reach > topReachPost.reach) {
-        topReachPost = p;
-      }
+      totalInteract += p.interact || 0;
+      totalReach += p.reach || 0;
     });
   });
 
@@ -1186,33 +1182,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           </div>
 
-          {topInteractPost && (
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-3 col-span-1">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-3 col-span-1">
               <div className="w-10 h-10 bg-orange-50 border border-orange-100 rounded-xl flex items-center justify-center text-orange-500 shrink-0">
                 <Flame className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Tương tác cao nhất</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Tổng tương tác</p>
                 <h3 className="font-display font-bold text-slate-800 text-base truncate font-mono">
-                  {formatNumber((topInteractPost as PostItem).interact)}
+                  {formatNumber(totalInteract)}
                 </h3>
               </div>
             </div>
-          )}
 
-          {topReachPost && (
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-3 col-span-1">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-3 col-span-1">
               <div className="w-10 h-10 bg-cyan-50 border border-cyan-100 rounded-xl flex items-center justify-center text-cyan-500 shrink-0">
                 <Eye className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Lượt tiếp cận cao nhất</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Tổng lượt tiếp cận</p>
                 <h3 className="font-display font-bold text-slate-800 text-base truncate font-mono">
-                  {formatNumber((topReachPost as PostItem).reach)}
+                  {formatNumber(totalReach)}
                 </h3>
               </div>
             </div>
-          )}
         </div>
       </div>
 
